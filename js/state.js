@@ -1,4 +1,16 @@
-// js/state.js - Estado Global y Cálculos Contables de StoreFlow
+// js/state.js — Estado Global y Cálculos Contables de StoreFlow
+// Persistence delegated to js/db.js (IndexedDB repository layer)
+
+import {
+    loadAllState,
+    saveState,
+    clearAllStores,
+    importarTodo,
+    exportarTodo,
+    withSyncMeta,
+} from './db.js';
+
+// ─── In-Memory State (synchronous reads) ──────────────────────────────
 
 export let state = {
     nombreTienda: "StoreFlow",
@@ -6,51 +18,88 @@ export let state = {
     colorTema: "azul",
     periodoActual: 1,
     gastosOperativos: 0,
-    clientes: [
-        { id: "c_1", nombre: "Juan Pérez", telefono: "555-0192", deuda_anterior: 0, pagado_en_periodo: false },
-        { id: "c_2", nombre: "María Gómez", telefono: "555-0143", deuda_anterior: 120, pagado_en_periodo: false },
-        { id: "c_3", nombre: "Carlos Flores", telefono: "", deuda_anterior: 0, pagado_en_periodo: false }
-    ],
-    productos: [
-        { id: "p_1", nombre: "Pastel de Chocolate", precio: 80, costo: 30, emoji: "🍰", imagen: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=120&auto=format&fit=crop&q=60" },
-        { id: "p_2", nombre: "Café Americano", precio: 45, costo: 15, emoji: "☕", imagen: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=120&auto=format&fit=crop&q=60" },
-        { id: "p_3", nombre: "Sándwich Especial", precio: 90, costo: 40, emoji: "🥪", imagen: "https://images.unsplash.com/photo-1509722747041-616f39b57569?w=120&auto=format&fit=crop&q=60" },
-        { id: "p_4", nombre: "Refresco", precio: 30, costo: 18, emoji: "🥤", imagen: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=120&auto=format&fit=crop&q=60" }
-    ],
-    ventas: [
-        { id: "v_1", clienteId: "c_1", productoId: "p_2", cantidad: 1, periodo: 1, fecha: "13/07, 08:30 AM" },
-        { id: "v_2", clienteId: "c_2", productoId: "p_1", cantidad: 2, periodo: 1, fecha: "13/07, 09:15 AM" }
-    ],
+    clientes: [],
+    productos: [],
+    ventas: [],
     pagos: [],
     historicoCierres: []
 };
 
-export function cargarDeLocalStorage() {
+// ─── Persistence: Load / Save ─────────────────────────────────────────
+
+/**
+ * Load state from IndexedDB (async, call once at init).
+ * Automatically migrates from localStorage if IndexedDB is empty.
+ */
+export async function cargarEstado() {
+    try {
+        const loaded = await loadAllState();
+        state.nombreTienda     = loaded.nombreTienda     || "StoreFlow";
+        state.simboloMoneda    = loaded.simboloMoneda     || "$";
+        state.colorTema        = loaded.colorTema         || "azul";
+        state.periodoActual    = loaded.periodoActual     || 1;
+        state.gastosOperativos = loaded.gastosOperativos  || 0;
+        state.clientes         = loaded.clientes          || [];
+        state.productos        = loaded.productos         || [];
+        state.ventas           = loaded.ventas            || [];
+        state.pagos            = loaded.pagos             || [];
+        state.historicoCierres = loaded.historicoCierres   || [];
+    } catch (e) {
+        console.error("[state.js] Error loading from IndexedDB:", e);
+        // Fallback: try localStorage directly (shouldn't happen after migration)
+        _fallbackCargarLocalStorage();
+    }
+}
+
+/**
+ * Persist in-memory state to IndexedDB (fire-and-forget).
+ * Exported as `guardarEnLocalStorage` for backwards compatibility with modals.
+ */
+let _saveTimer = null;
+function _guardarEstado() {
+    // Debounce: batch rapid writes into a single IndexedDB transaction
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => {
+        saveState(state).catch(err => {
+            console.error("[state.js] Error saving to IndexedDB:", err);
+        });
+    }, 50);
+}
+
+// Backwards-compatible export name — all modals import this
+export const guardarEnLocalStorage = _guardarEstado;
+export const guardarEstado = _guardarEstado;
+
+// Legacy sync loader (fallback only)
+function _fallbackCargarLocalStorage() {
     const dataGuardada = localStorage.getItem('storeflow_ledger_state_v2');
     if (dataGuardada) {
         try {
             const parsed = JSON.parse(dataGuardada);
-            state.nombreTienda = parsed.nombreTienda || "StoreFlow";
-            state.simboloMoneda = parsed.simboloMoneda || "$";
-            state.colorTema = parsed.colorTema || "azul";
-            state.periodoActual = parsed.periodoActual || 1;
-            state.gastosOperativos = parsed.gastosOperativos || 0;
-            state.clientes = parsed.clientes || [];
-            state.productos = parsed.productos || [];
-            state.ventas = parsed.ventas || [];
-            state.pagos = parsed.pagos || [];
-            state.historicoCierres = parsed.historicoCierres || [];
+            state.nombreTienda     = parsed.nombreTienda     || "StoreFlow";
+            state.simboloMoneda    = parsed.simboloMoneda     || "$";
+            state.colorTema        = parsed.colorTema         || "azul";
+            state.periodoActual    = parsed.periodoActual     || 1;
+            state.gastosOperativos = parsed.gastosOperativos  || 0;
+            state.clientes         = parsed.clientes         || [];
+            state.productos        = parsed.productos        || [];
+            state.ventas           = parsed.ventas            || [];
+            state.pagos            = parsed.pagos             || [];
+            state.historicoCierres = parsed.historicoCierres  || [];
         } catch (e) {
-            console.error("Error cargando caché", e);
+            console.error("Error loading localStorage fallback", e);
         }
     }
 }
 
-export function guardarEnLocalStorage() {
-    localStorage.setItem('storeflow_ledger_state_v2', JSON.stringify(state));
+// Legacy alias kept for any straggling imports
+export function cargarDeLocalStorage() {
+    _fallbackCargarLocalStorage();
 }
 
-export function resetearTodosLosDatos() {
+// ─── Reset & Demo Data ────────────────────────────────────────────────
+
+export async function resetearTodosLosDatos() {
     state.nombreTienda = "StoreFlow";
     state.simboloMoneda = "$";
     state.colorTema = "azul";
@@ -61,69 +110,76 @@ export function resetearTodosLosDatos() {
     state.ventas = [];
     state.pagos = [];
     state.historicoCierres = [];
-    guardarEnLocalStorage();
+    await clearAllStores();
 }
 
 export function cargarDatosDemostracion() {
+    const ahora = new Date().toISOString();
     state.nombreTienda = "Mi Tiendita";
     state.simboloMoneda = "$";
     state.colorTema = "azul";
     state.periodoActual = 1;
     state.gastosOperativos = 0;
     state.clientes = [
-        { id: "c_1", nombre: "Juan Pérez", telefono: "555-0192", deuda_anterior: 0, pagado_en_periodo: false },
-        { id: "c_2", nombre: "María Gómez", telefono: "555-0143", deuda_anterior: 120, pagado_en_periodo: false },
-        { id: "c_3", nombre: "Carlos Flores", telefono: "", deuda_anterior: 0, pagado_en_periodo: false }
+        { id: "c_1", nombre: "Juan Pérez", telefono: "555-0192", deuda_anterior: 0, pagado_en_periodo: false, createdAt: ahora, updatedAt: ahora, _syncStatus: 'pending', _lastSyncedAt: null, _deleted: false },
+        { id: "c_2", nombre: "María Gómez", telefono: "555-0143", deuda_anterior: 120, pagado_en_periodo: false, createdAt: ahora, updatedAt: ahora, _syncStatus: 'pending', _lastSyncedAt: null, _deleted: false },
+        { id: "c_3", nombre: "Carlos Flores", telefono: "", deuda_anterior: 0, pagado_en_periodo: false, createdAt: ahora, updatedAt: ahora, _syncStatus: 'pending', _lastSyncedAt: null, _deleted: false }
     ];
     state.productos = [
-        { id: "p_1", nombre: "Pastel de Chocolate", precio: 80, costo: 30, emoji: "🍰", imagen: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=120&auto=format&fit=crop&q=60" },
-        { id: "p_2", nombre: "Café Americano", precio: 45, costo: 15, emoji: "☕", imagen: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=120&auto=format&fit=crop&q=60" },
-        { id: "p_3", nombre: "Sándwich Especial", precio: 90, costo: 40, emoji: "🥪", imagen: "https://images.unsplash.com/photo-1509722747041-616f39b57569?w=120&auto=format&fit=crop&q=60" },
-        { id: "p_4", nombre: "Refresco", precio: 30, costo: 18, emoji: "🥤", imagen: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=120&auto=format&fit=crop&q=60" }
+        { id: "p_1", nombre: "Pastel de Chocolate", precio: 80, costo: 30, emoji: "🍰", imagen: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=120&auto=format&fit=crop&q=60", createdAt: ahora, updatedAt: ahora, _syncStatus: 'pending', _lastSyncedAt: null, _deleted: false },
+        { id: "p_2", nombre: "Café Americano", precio: 45, costo: 15, emoji: "☕", imagen: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=120&auto=format&fit=crop&q=60", createdAt: ahora, updatedAt: ahora, _syncStatus: 'pending', _lastSyncedAt: null, _deleted: false },
+        { id: "p_3", nombre: "Sándwich Especial", precio: 90, costo: 40, emoji: "🥪", imagen: "https://images.unsplash.com/photo-1509722747041-616f39b57569?w=120&auto=format&fit=crop&q=60", createdAt: ahora, updatedAt: ahora, _syncStatus: 'pending', _lastSyncedAt: null, _deleted: false },
+        { id: "p_4", nombre: "Refresco", precio: 30, costo: 18, emoji: "🥤", imagen: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=120&auto=format&fit=crop&q=60", createdAt: ahora, updatedAt: ahora, _syncStatus: 'pending', _lastSyncedAt: null, _deleted: false }
     ];
     state.ventas = [
-        { id: "v_1", clienteId: "c_1", productoId: "p_2", cantidad: 1, periodo: 1, fecha: "13/07, 08:30 AM" },
-        { id: "v_2", clienteId: "c_2", productoId: "p_1", cantidad: 2, periodo: 1, fecha: "13/07, 09:15 AM" }
+        { id: "v_1", clienteId: "c_1", productoId: "p_2", cantidad: 1, periodo: 1, fecha: "13/07, 08:30 AM", fechaIso: ahora, createdAt: ahora, updatedAt: ahora, _syncStatus: 'pending', _lastSyncedAt: null, _deleted: false },
+        { id: "v_2", clienteId: "c_2", productoId: "p_1", cantidad: 2, periodo: 1, fecha: "13/07, 09:15 AM", fechaIso: ahora, createdAt: ahora, updatedAt: ahora, _syncStatus: 'pending', _lastSyncedAt: null, _deleted: false }
     ];
     state.pagos = [];
     state.historicoCierres = [];
     guardarEnLocalStorage();
 }
 
-// 1. Calcular el total consumido por el cliente en el período activo
+// ─── Backup Export / Import (delegated to db.js) ──────────────────────
+
+export { exportarTodo, importarTodo };
+
+// ─── Accounting Calculations (pure, synchronous) ─────────────────────
+
+// 1. Total consumed by client in active period
 export function calcularConsumoCliente(clienteId) {
     return state.ventas
-        .filter(v => v.clienteId === clienteId && v.periodo === state.periodoActual)
+        .filter(v => v.clienteId === clienteId && v.periodo === state.periodoActual && !v._deleted)
         .reduce((total, v) => {
             const prod = state.productos.find(p => p.id === v.productoId);
             return total + (prod ? (prod.precio * v.cantidad) : 0);
         }, 0);
 }
 
-// 2. Calcular pagos/abonos realizados por el cliente en el período activo
+// 2. Payments by client in active period
 export function calcularPagosCliente(clienteId) {
     if (!state.pagos) return 0;
     return state.pagos
-        .filter(p => p.clienteId === clienteId && p.periodo === state.periodoActual)
+        .filter(p => p.clienteId === clienteId && p.periodo === state.periodoActual && !p._deleted)
         .reduce((total, p) => total + (parseFloat(p.monto) || 0), 0);
 }
 
-// 3. Contar pedidos y artículos del período actual
+// 3. Count orders and items in current period
 export function contarPedidosCliente(clienteId) {
-    const ventasPeriodo = state.ventas.filter(v => v.clienteId === clienteId && v.periodo === state.periodoActual);
+    const ventasPeriodo = state.ventas.filter(v => v.clienteId === clienteId && v.periodo === state.periodoActual && !v._deleted);
     const totalPedidos = ventasPeriodo.length;
     const totalArticulos = ventasPeriodo.reduce((sum, v) => sum + v.cantidad, 0);
     return { totalPedidos, totalArticulos };
 }
 
-// 4. Calcular el consumo realizado exclusivamente el día de hoy por el cliente
+// 4. Today's consumption by client
 export function calcularConsumoHoyCliente(clienteId) {
     const hoyStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
     const hoyFullStr = new Date().toLocaleDateString('es-ES');
     
     return state.ventas
         .filter(v => {
-            if (v.clienteId !== clienteId || v.periodo !== state.periodoActual) return false;
+            if (v.clienteId !== clienteId || v.periodo !== state.periodoActual || v._deleted) return false;
             if (v.fechaIso) {
                 const f = new Date(v.fechaIso).toLocaleDateString('es-ES');
                 return f === hoyFullStr;
@@ -139,7 +195,7 @@ export function calcularConsumoHoyCliente(clienteId) {
         }, 0);
 }
 
-// 5. Calcular saldo restante neto
+// 5. Net balance remaining
 export function calcularMontoRestanteCliente(clienteId) {
     const c = state.clientes.find(cli => cli.id === clienteId);
     if (!c) return 0;
@@ -148,13 +204,14 @@ export function calcularMontoRestanteCliente(clienteId) {
     return Math.max(0, (c.deuda_anterior + consumoPeriodo) - pagosPeriodo);
 }
 
-// 6. Estadísticas Globales del Día y del Ciclo Actual
+// 6. Global Statistics
 export function calcularTotalVendidoHoy() {
     const hoyFullStr = new Date().toLocaleDateString('es-ES');
     const hoyStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
 
     return state.ventas
         .filter(v => {
+            if (v._deleted) return false;
             if (v.fechaIso) {
                 const f = new Date(v.fechaIso).toLocaleDateString('es-ES');
                 return f === hoyFullStr;
@@ -177,27 +234,27 @@ export function calcularTotalPendienteCiclo() {
 export function calcularTotalPagadoCiclo() {
     if (!state.pagos) return 0;
     return state.pagos
-        .filter(p => p.periodo === state.periodoActual)
+        .filter(p => p.periodo === state.periodoActual && !p._deleted)
         .reduce((total, p) => total + (parseFloat(p.monto) || 0), 0);
 }
 
 export function calcularTotalVendidoCiclo() {
     return state.ventas
-        .filter(v => v.periodo === state.periodoActual)
+        .filter(v => v.periodo === state.periodoActual && !v._deleted)
         .reduce((total, v) => {
             const prod = state.productos.find(p => p.id === v.productoId);
             return total + (prod ? (prod.precio * v.cantidad) : 0);
         }, 0);
 }
 
-// 7. Funciones de Venta Rápida (Quick Order) para Productos Seleccionados
+// 7. Quick Order Functions
 export function calcularCantidadVendidaHoyProducto(productoId) {
     const hoyFullStr = new Date().toLocaleDateString('es-ES');
     const hoyStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
 
     return state.ventas
         .filter(v => {
-            if (v.productoId !== productoId) return false;
+            if (v.productoId !== productoId || v._deleted) return false;
             if (v.fechaIso) {
                 const f = new Date(v.fechaIso).toLocaleDateString('es-ES');
                 return f === hoyFullStr;
@@ -212,7 +269,7 @@ export function calcularCantidadVendidaHoyProducto(productoId) {
 
 export function calcularCantidadProductoCliente(clienteId, productoId) {
     return state.ventas
-        .filter(v => v.clienteId === clienteId && v.productoId === productoId && v.periodo === state.periodoActual)
+        .filter(v => v.clienteId === clienteId && v.productoId === productoId && v.periodo === state.periodoActual && !v._deleted)
         .reduce((sum, v) => sum + v.cantidad, 0);
 }
 
@@ -220,7 +277,7 @@ export function agregarVentaRapida(clienteId, productoId, cantidad = 1) {
     const ahora = new Date();
     const fechaStr = `${ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}, ${ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
-    state.ventas.push({
+    state.ventas.push(withSyncMeta({
         id: "v_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
         clienteId,
         productoId,
@@ -228,15 +285,14 @@ export function agregarVentaRapida(clienteId, productoId, cantidad = 1) {
         periodo: state.periodoActual,
         fecha: fechaStr,
         fechaIso: ahora.toISOString()
-    });
+    }, true));
 
     guardarEnLocalStorage();
 }
 
 export function reducirVentaRapida(clienteId, productoId) {
-    // Buscar la última venta de este producto para este cliente en el ciclo actual
     const idx = state.ventas.map(v => v).reverse().findIndex(
-        v => v.clienteId === clienteId && v.productoId === productoId && v.periodo === state.periodoActual
+        v => v.clienteId === clienteId && v.productoId === productoId && v.periodo === state.periodoActual && !v._deleted
     );
 
     if (idx !== -1) {
@@ -244,6 +300,8 @@ export function reducirVentaRapida(clienteId, productoId) {
         const venta = state.ventas[realIdx];
         if (venta.cantidad > 1) {
             venta.cantidad -= 1;
+            venta.updatedAt = new Date().toISOString();
+            venta._syncStatus = 'pending';
         } else {
             state.ventas.splice(realIdx, 1);
         }
@@ -253,7 +311,7 @@ export function reducirVentaRapida(clienteId, productoId) {
     return false;
 }
 
-// 8. Sistema de Temas de Color
+// 8. Theme System
 const TEMAS = {
     azul: {
         accent: '#1A73E8',

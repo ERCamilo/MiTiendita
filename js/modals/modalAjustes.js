@@ -1,5 +1,5 @@
 // js/modals/modalAjustes.js - Modal de Ajustes, Personalización de Tienda y Gestión de Datos
-import { state, guardarEnLocalStorage, resetearTodosLosDatos, cargarDatosDemostracion, aplicarTema } from '../state.js';
+import { state, guardarEnLocalStorage, resetearTodosLosDatos, cargarDatosDemostracion, aplicarTema, exportarTodo, importarTodo, cargarEstado } from '../state.js';
 import { showToast } from '../toast.js';
 import { customConfirm } from './modalConfirm.js';
 
@@ -149,8 +149,8 @@ export function initModalAjustes(onAjustesActualizados) {
         customConfirm(
             "Borrar Todos los Datos", 
             "⚠️ ATENCIÓN: Se eliminarán permanentemente todos los clientes, productos, ventas e historial. Esta acción no se puede deshacer.",
-            () => {
-                resetearTodosLosDatos();
+            async () => {
+                await resetearTodosLosDatos();
                 cerrarModalAjustes();
                 if (onAjustesActualizadosCallback) onAjustesActualizadosCallback();
                 showToast("Todos los datos han sido borrados.");
@@ -239,19 +239,25 @@ function guardarIdentidadTienda() {
     showToast(`¡Configuración de "${nuevoNombre}" guardada!`);
 }
 
-function ejecutarExportarBackup() {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
-    const ahora = new Date().toISOString().split('T')[0];
-    const fileName = `storeflow_backup_${ahora}.json`;
+async function ejecutarExportarBackup() {
+    try {
+        const data = await exportarTodo();
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+        const ahora = new Date().toISOString().split('T')[0];
+        const fileName = `storeflow_backup_${ahora}.json`;
 
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", fileName);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", fileName);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
 
-    showToast("¡Copia de seguridad exportada con éxito!");
+        showToast("¡Copia de seguridad exportada con éxito!");
+    } catch (err) {
+        console.error(err);
+        showToast("Error al exportar la copia de seguridad", true);
+    }
 }
 
 function ejecutarImportarBackup(e) {
@@ -266,9 +272,9 @@ function ejecutarImportarBackup(e) {
                 customConfirm(
                     "Restaurar Copia",
                     `Se importarán ${dataImportada.clientes.length} clientes y ${dataImportada.productos.length} productos. ¿Deseas sobrescribir los datos actuales?`,
-                    () => {
-                        Object.assign(state, dataImportada);
-                        guardarEnLocalStorage();
+                    async () => {
+                        await importarTodo(dataImportada);
+                        await cargarEstado(); // Reload in-memory state from IndexedDB
                         cerrarModalAjustes();
                         if (onAjustesActualizadosCallback) onAjustesActualizadosCallback();
                         showToast("¡Copia de seguridad restaurada!");

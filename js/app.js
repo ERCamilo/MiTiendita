@@ -1,6 +1,6 @@
 import { 
     state, 
-    cargarDeLocalStorage, 
+    cargarEstado,
     guardarEnLocalStorage, 
     calcularConsumoCliente, 
     calcularPagosCliente, 
@@ -31,9 +31,9 @@ let clienteExpandidoId = null;
 let currentTab = 'clientes';
 let productoRapidoSeleccionadoId = null;
 
-// 1. Inicialización de la Aplicación
-document.addEventListener('DOMContentLoaded', () => {
-    cargarDeLocalStorage();
+// 1. Inicialización de la Aplicación (async para IndexedDB)
+document.addEventListener('DOMContentLoaded', async () => {
+    await cargarEstado();
     aplicarTema(state.colorTema || 'azul');
     
     // Inicializar Componentes Modales
