@@ -13,9 +13,9 @@ import {
 // ─── In-Memory State (synchronous reads) ──────────────────────────────
 
 export let state = {
-    nombreTienda: "StoreFlow",
+    nombreTienda: "Mi Tiendita",
     simboloMoneda: "$",
-    colorTema: "azul",
+    colorTema: "coral",
     periodoActual: 1,
     gastosOperativos: 0,
     clientes: [],
@@ -34,9 +34,9 @@ export let state = {
 export async function cargarEstado() {
     try {
         const loaded = await loadAllState();
-        state.nombreTienda     = loaded.nombreTienda     || "StoreFlow";
+        state.nombreTienda     = loaded.nombreTienda     || "Mi Tiendita";
         state.simboloMoneda    = loaded.simboloMoneda     || "$";
-        state.colorTema        = loaded.colorTema         || "azul";
+        state.colorTema        = loaded.colorTema         || "coral";
         state.periodoActual    = loaded.periodoActual     || 1;
         state.gastosOperativos = loaded.gastosOperativos  || 0;
         state.clientes         = loaded.clientes          || [];
@@ -100,9 +100,9 @@ export function cargarDeLocalStorage() {
 // ─── Reset & Demo Data ────────────────────────────────────────────────
 
 export async function resetearTodosLosDatos() {
-    state.nombreTienda = "StoreFlow";
+    state.nombreTienda = "Mi Tiendita";
     state.simboloMoneda = "$";
-    state.colorTema = "azul";
+    state.colorTema = "coral";
     state.periodoActual = 1;
     state.gastosOperativos = 0;
     state.clientes = [];
@@ -117,7 +117,7 @@ export function cargarDatosDemostracion() {
     const ahora = new Date().toISOString();
     state.nombreTienda = "Mi Tiendita";
     state.simboloMoneda = "$";
-    state.colorTema = "azul";
+    state.colorTema = "coral";
     state.periodoActual = 1;
     state.gastosOperativos = 0;
     state.clientes = [
@@ -313,12 +313,23 @@ export function reducirVentaRapida(clienteId, productoId) {
 
 // 8. Theme System
 const TEMAS = {
+    coral: {
+        accent: '#D95338',
+        hover: '#C2410C',
+        container: '#FBE8E4',
+        onContainer: '#7A1C0E',
+        light: '#FFF5F3',
+        paper: '#F8F5F0',
+        card: '#FFFFFF',
+    },
     azul: {
         accent: '#1A73E8',
         hover: '#1765CC',
         container: '#D2E3FC',
         onContainer: '#174EA6',
         light: '#E8F0FE',
+        paper: '#F8F9FA',
+        card: '#FFFFFF',
     },
     violeta: {
         accent: '#7C3AED',
@@ -326,6 +337,8 @@ const TEMAS = {
         container: '#EDE9FE',
         onContainer: '#4C1D95',
         light: '#F5F3FF',
+        paper: '#FAF9FC',
+        card: '#FFFFFF',
     },
     verde: {
         accent: '#0D9488',
@@ -333,6 +346,8 @@ const TEMAS = {
         container: '#CCFBF1',
         onContainer: '#134E4A',
         light: '#F0FDFA',
+        paper: '#F7FAF9',
+        card: '#FFFFFF',
     },
     rojo: {
         accent: '#DC2626',
@@ -340,6 +355,8 @@ const TEMAS = {
         container: '#FEE2E2',
         onContainer: '#7F1D1D',
         light: '#FEF2F2',
+        paper: '#FAF8F8',
+        card: '#FFFFFF',
     },
     naranja: {
         accent: '#EA580C',
@@ -347,6 +364,8 @@ const TEMAS = {
         container: '#FFEDD5',
         onContainer: '#7C2D12',
         light: '#FFF7ED',
+        paper: '#FAF8F5',
+        card: '#FFFFFF',
     },
     rosa: {
         accent: '#DB2777',
@@ -354,17 +373,22 @@ const TEMAS = {
         container: '#FCE7F3',
         onContainer: '#831843',
         light: '#FDF2F8',
+        paper: '#FAF8F9',
+        card: '#FFFFFF',
     },
 };
 
 export function aplicarTema(nombreTema) {
-    const tema = TEMAS[nombreTema] || TEMAS.azul;
+    const tema = TEMAS[nombreTema] || TEMAS.coral || TEMAS.azul;
     const root = document.documentElement.style;
     root.setProperty('--sf-accent', tema.accent);
     root.setProperty('--sf-accent-hover', tema.hover);
     root.setProperty('--sf-accent-container', tema.container);
     root.setProperty('--sf-accent-on-container', tema.onContainer);
     root.setProperty('--sf-accent-light', tema.light);
+    root.setProperty('--sf-bg-paper', tema.paper || '#F8F5F0');
+    root.setProperty('--sf-bg-card', tema.card || '#FFFFFF');
+    document.body.style.backgroundColor = tema.paper || '#F8F5F0';
 }
 
 export function obtenerNombresTemas() {

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="coralGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E05338"/>
+      <stop offset="100%" stop-color="#C83F26"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  
+  <!-- Fondo Redondeado / Squircle -->
+  <rect width="512" height="512" rx="128" fill="url(#coralGrad)"/>
+  
+  <!-- Tarjeta Interior Estilo Comanda con Línea Punteada -->
+  <g filter="url(#shadow)">
+    <rect x="96" y="80" width="320" height="352" rx="36" fill="#FFFFFF"/>
+    
+    <!-- Toldo de Tienda Superior -->
+    <path d="M 120 140 Q 140 170 160 140 Q 180 170 200 140 Q 220 170 240 140 Q 260 170 280 140 Q 300 170 320 140 Q 340 170 360 140 Q 380 170 392 140 L 392 120 Q 392 104 376 104 L 136 104 Q 120 104 120 120 Z" fill="#D95338"/>
+    
+    <!-- Línea Punteada de Ticket -->
+    <line x1="130" y1="270" x2="382" y2="270" stroke="#D95338" stroke-width="4" stroke-dasharray="10 8" stroke-linecap="round"/>
+    
+    <!-- Símbolo de Moneda / Ventas -->
+    <text x="256" y="240" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="76" font-weight="900" fill="#1D1D1F" text-anchor="middle">$</text>
+    
+    <!-- Iniciales MT / Identidad -->
+    <text x="256" y="340" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="28" font-weight="800" fill="#D95338" text-anchor="middle" letter-spacing="3">MI TIENDITA</text>
+    <text x="256" y="375" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="16" font-weight="600" fill="#8A8580" text-anchor="middle" letter-spacing="1">CONTROL DE CUENTAS</text>
+  </g>
+</svg>

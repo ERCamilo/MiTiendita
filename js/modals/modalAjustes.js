@@ -2,10 +2,12 @@
 import { state, guardarEnLocalStorage, resetearTodosLosDatos, cargarDatosDemostracion, aplicarTema, exportarTodo, importarTodo, cargarEstado } from '../state.js';
 import { showToast } from '../toast.js';
 import { customConfirm } from './modalConfirm.js';
+import { instalarPWA, forzarActualizacion, esPWAInstalada, hayPromptInstalacionDisponible, onPWAStateChange } from '../pwa.js';
 
 let onAjustesActualizadosCallback = null;
 
 const COLORES_TEMA = {
+    coral:   { label: 'Coral',   hex: '#D95338' },
     azul:    { label: 'Azul',    hex: '#1A73E8' },
     violeta: { label: 'Violeta', hex: '#7C3AED' },
     verde:   { label: 'Verde',   hex: '#0D9488' },
@@ -77,6 +79,35 @@ export function initModalAjustes(onAjustesActualizados) {
                 <button type="button" id="btn-guardar-identidad" class="w-full py-2.5 rounded-xl bg-m3-primary text-white text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition cursor-pointer">
                     Guardar Cambios
                 </button>
+            </div>
+
+            <!-- Sección: Aplicación & PWA (Instalación y Actualizaciones) -->
+            <div class="bg-m3-surface p-4 rounded-2xl space-y-2.5 border border-m3-outlineVariant/30">
+                <div class="flex items-center justify-between">
+                    <h4 class="text-xs font-bold text-m3-onSurface flex items-center space-x-1.5">
+                        <i data-lucide="smartphone" class="w-3.5 h-3.5 text-m3-primary"></i>
+                        <span>Aplicación & PWA</span>
+                    </h4>
+                    <span id="pwa-badge-status" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                        Offline Ready
+                    </span>
+                </div>
+                <p class="text-[10px] text-m3-outline">Instala Mi Tiendita en tu pantalla de inicio y gestiona actualizaciones con caché limpio.</p>
+
+                <div class="space-y-2 pt-1">
+                    <!-- Botón Instalar -->
+                    <button type="button" id="btn-instalar-pwa" class="w-full py-2.5 px-3 rounded-xl bg-m3-primary hover:bg-m3-primary/90 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-xs transition active:scale-95 cursor-pointer">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span id="btn-instalar-texto">Instalar en Dispositivo</span>
+                    </button>
+
+                    <!-- Botón Buscar Actualizaciones -->
+                    <button type="button" id="btn-actualizar-pwa" class="w-full py-2.5 px-3 rounded-xl bg-white border border-m3-outlineVariant/40 text-m3-onSurface hover:bg-m3-surfaceVariant text-xs font-bold flex items-center justify-center space-x-2 shadow-2xs transition active:scale-95 cursor-pointer">
+                        <i data-lucide="refresh-cw" class="w-4 h-4 text-m3-primary"></i>
+                        <span>Buscar Actualizaciones</span>
+                    </button>
+                    <p class="text-[9px] text-gray-500 text-center">Forzará la limpieza del caché para descargar la versión más reciente sin tocar tus datos.</p>
+                </div>
             </div>
 
             <!-- Sección: Copia de Seguridad (Backup) -->
@@ -159,6 +190,26 @@ export function initModalAjustes(onAjustesActualizados) {
         );
     });
 
+    // Eventos PWA
+    document.getElementById('btn-instalar-pwa').addEventListener('click', () => {
+        instalarPWA();
+    });
+
+    document.getElementById('btn-actualizar-pwa').addEventListener('click', () => {
+        customConfirm(
+            "Actualizar Aplicación", 
+            "Se limpiará el caché local y se descargará la última versión de la app. Tus clientes, ventas y deudas NO se verán afectados. ¿Continuar?",
+            () => {
+                forzarActualizacion();
+            },
+            "refresh-cw"
+        );
+    });
+
+    onPWAStateChange(() => {
+        actualizarEstadoPWAEnModal();
+    });
+
     modal.querySelectorAll('.btn-moneda').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const moneda = e.currentTarget.getAttribute('data-moneda');
@@ -181,14 +232,48 @@ let temaSeleccionadoEnModal = null;
 export function abrirModalAjustes() {
     const inputNombre = document.getElementById('ajustes-nombre-tienda');
     if (inputNombre) {
-        inputNombre.value = state.nombreTienda || "StoreFlow";
+        inputNombre.value = state.nombreTienda || "Mi Tiendita";
     }
     seleccionarMonedaUI(state.simboloMoneda || "$");
-    temaSeleccionadoEnModal = state.colorTema || "azul";
+    temaSeleccionadoEnModal = state.colorTema || "coral";
     seleccionarTemaUI(temaSeleccionadoEnModal);
+    actualizarEstadoPWAEnModal();
 
     document.getElementById('modal-ajustes').classList.remove('hidden');
     if (window.lucide) window.lucide.createIcons();
+}
+
+function actualizarEstadoPWAEnModal() {
+    const btnInstalar = document.getElementById('btn-instalar-pwa');
+    const textoInstalar = document.getElementById('btn-instalar-texto');
+    const badgeStatus = document.getElementById('pwa-badge-status');
+    if (!btnInstalar || !textoInstalar) return;
+
+    if (esPWAInstalada()) {
+        btnInstalar.className = "w-full py-2.5 px-3 rounded-xl bg-gray-100 border border-gray-200 text-gray-500 text-xs font-semibold flex items-center justify-center space-x-2 cursor-default";
+        btnInstalar.disabled = true;
+        textoInstalar.textContent = "✓ Aplicación ya instalada";
+        if (badgeStatus) {
+            badgeStatus.textContent = "Modo App Instalada";
+            badgeStatus.className = "text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800";
+        }
+    } else if (hayPromptInstalacionDisponible()) {
+        btnInstalar.className = "w-full py-2.5 px-3 rounded-xl bg-m3-primary hover:bg-m3-primary/90 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-xs transition active:scale-95 cursor-pointer";
+        btnInstalar.disabled = false;
+        textoInstalar.textContent = "Instalar en Dispositivo";
+        if (badgeStatus) {
+            badgeStatus.textContent = "Listo para instalar";
+            badgeStatus.className = "text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800";
+        }
+    } else {
+        btnInstalar.className = "w-full py-2.5 px-3 rounded-xl bg-m3-primary hover:bg-m3-primary/90 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-xs transition active:scale-95 cursor-pointer";
+        btnInstalar.disabled = false;
+        textoInstalar.textContent = "Instalar Aplicación";
+        if (badgeStatus) {
+            badgeStatus.textContent = "Offline Ready";
+            badgeStatus.className = "text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800";
+        }
+    }
 }
 
 export function cerrarModalAjustes() {
@@ -292,3 +377,5 @@ function ejecutarImportarBackup(e) {
     reader.readAsText(file);
     e.target.value = '';
 }
+
+export { COLORES_TEMA, ejecutarExportarBackup, ejecutarImportarBackup };
