@@ -1,11 +1,12 @@
 // sw.js - Service Worker para Mi Tiendita (PWA con soporte Offline completo y Actualizaciones)
-const CACHE_VERSION = 'mitiendita-v1.1';
+const CACHE_VERSION = 'mitiendita-v1.2';
 const CACHE_NAME = `mitiendita-cache-${CACHE_VERSION}`;
 
 // Recursos estáticos críticos del núcleo
 const STATIC_ASSETS = [
     './',
     './index.html',
+    './js/app.js?v=4.0',
     './manifest.json',
     './js/app.js',
     './js/db.js',
@@ -28,9 +29,7 @@ const STATIC_ASSETS = [
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then(cache => {
-                return cache.addAll(STATIC_ASSETS);
-            })
+            .then(cache => cache.addAll(STATIC_ASSETS))
             .then(() => self.skipWaiting())
     );
 });
@@ -42,7 +41,7 @@ self.addEventListener('activate', event => {
             .then(keys => {
                 return Promise.all(
                     keys.map(key => {
-                        if (key !== CACHE_NAME) {
+                        if (key.startsWith('mitiendita-cache-') && key !== CACHE_NAME) {
                             return caches.delete(key);
                         }
                     })
@@ -118,7 +117,7 @@ self.addEventListener('message', event => {
 
     if (event.data.action === 'clearCache') {
         caches.keys().then(keys => {
-            return Promise.all(keys.map(k => caches.delete(k)));
+            return Promise.all(keys.filter(k => k.startsWith('mitiendita-cache-')).map(k => caches.delete(k)));
         }).then(() => {
             if (event.ports && event.ports[0]) {
                 event.ports[0].postMessage({ success: true });
