@@ -28,20 +28,19 @@ import { initModalTicket, abrirModalCompartirTicket } from './modals/modalTicket
 import { initModalDetalleCliente, abrirDetalleCliente } from './modals/modalDetalleCliente.js';
 import { initModalConfirm, customConfirm } from './modals/modalConfirm.js';
 import { initModalAjustes, abrirModalAjustes, COLORES_TEMA, ejecutarExportarBackup, ejecutarImportarBackup } from './modals/modalAjustes.js';
-import { initPWA, instalarPWA, forzarActualizacion, esPWAInstalada, hayPromptInstalacionDisponible, onPWAStateChange } from './pwa.js';
+import { initPWA, instalarPWA, forzarActualizacion, obtenerEstadoInstalacionPWA, onPWAStateChange } from './pwa.js';
 
 let clienteExpandidoId = null;
 let currentTab = 'clientes';
 let productoRapidoSeleccionadoId = null;
 
 // 1. Inicialización de la Aplicación (async para IndexedDB)
+initPWA();
+
 document.addEventListener('DOMContentLoaded', async () => {
     await cargarEstado();
     aplicarTema(state.colorTema || 'coral');
     
-    // Inicializar Soporte PWA y Service Worker
-    initPWA();
-
     // Inicializar Componentes Modales
     initModalNuevoCliente(() => render());
     initModalNuevoPedido(() => render());
@@ -310,35 +309,21 @@ function guardarIdentidadTiendaDesdeTab() {
 }
 
 function actualizarEstadoPWAEnTab() {
-    const btnInstalar = document.getElementById('tab-btn-instalar-pwa');
-    const textoInstalar = document.getElementById('tab-btn-instalar-texto');
-    const badgeStatus = document.getElementById('tab-pwa-badge-status');
-    if (!btnInstalar || !textoInstalar) return;
-
-    if (esPWAInstalada()) {
-        btnInstalar.className = "w-full py-3 px-4 rounded-2xl bg-gray-100 border border-gray-200 text-gray-500 font-semibold text-sm flex items-center justify-center space-x-2 cursor-default";
-        btnInstalar.disabled = true;
-        textoInstalar.textContent = "✓ Aplicación ya instalada en este celular";
-        if (badgeStatus) {
-            badgeStatus.textContent = "Modo App Instalada";
-            badgeStatus.className = "text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800";
-        }
-    } else if (hayPromptInstalacionDisponible()) {
-        btnInstalar.className = "w-full py-3 px-4 rounded-2xl bg-m3-primary hover:bg-m3-primary/90 text-white font-bold text-sm flex items-center justify-center space-x-2 shadow-sm transition-all active:scale-95 cursor-pointer";
-        btnInstalar.disabled = false;
-        textoInstalar.textContent = "📲 Instalar en este Celular";
-        if (badgeStatus) {
-            badgeStatus.textContent = "Listo para instalar";
-            badgeStatus.className = "text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800";
-        }
-    } else {
-        btnInstalar.className = "w-full py-3 px-4 rounded-2xl bg-m3-primary hover:bg-m3-primary/90 text-white font-bold text-sm flex items-center justify-center space-x-2 shadow-sm transition-all active:scale-95 cursor-pointer";
-        btnInstalar.disabled = false;
-        textoInstalar.textContent = "📲 Instalar en este Celular";
-        if (badgeStatus) {
-            badgeStatus.textContent = "Offline Ready";
-            badgeStatus.className = "text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800";
-        }
+    const boton = document.getElementById('tab-btn-instalar-pwa');
+    const texto = document.getElementById('tab-btn-instalar-texto');
+    const badge = document.getElementById('tab-pwa-badge-status');
+    if (!boton || !texto) return;
+    const estado = obtenerEstadoInstalacionPWA();
+    boton.disabled = estado.tipo === 'instalada';
+    boton.classList.toggle('opacity-60', boton.disabled);
+    boton.classList.toggle('cursor-not-allowed', boton.disabled);
+    texto.textContent = estado.accion;
+    if (badge) {
+        badge.textContent = estado.etiqueta;
+        badge.className = 'text-[10px] font-extrabold px-2.5 py-1 rounded-full ' +
+            (estado.tipo === 'instalada' ? 'bg-blue-100 text-blue-800' :
+             estado.tipo === 'disponible' ? 'bg-emerald-100 text-emerald-800' :
+             'bg-amber-100 text-amber-800');
     }
 }
 
