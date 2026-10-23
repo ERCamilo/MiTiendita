@@ -89,7 +89,7 @@ export function initModalAjustes(onAjustesActualizados) {
                         <span>Aplicación & PWA</span>
                     </h4>
                     <span id="pwa-badge-status" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                        Offline Ready
+                        Comprobando instalación
                     </span>
                 </div>
                 <p class="text-[10px] text-m3-outline">Instala Mi Tiendita en tu pantalla de inicio y gestiona actualizaciones con caché limpio.</p>
