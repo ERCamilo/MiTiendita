@@ -47,6 +47,25 @@ export async function cargarEstado() {
         state.ventas           = loaded.ventas            || [];
         state.pagos            = loaded.pagos             || [];
         state.historicoCierres = loaded.historicoCierres   || [];
+        // Fijar una referencia para las ventas antiguas sin precio guardado.
+        // Es una estimación basada en el catálogo ACTUAL, no el precio original verificable.
+        let actualizadas = 0;
+        for (const venta of state.ventas) {
+            if (venta.precioUnitario != null) continue;
+            const producto = state.productos.find(p => p.id === venta.productoId);
+            if (!producto || !Number.isFinite(Number(producto.precio))) continue;
+            venta.precioUnitario = Number(producto.precio);
+            venta.costoUnitario = Number(producto.costo || 0);
+            venta.precioInferidoDelCatalogo = true;
+            actualizadas++;
+        }
+        if (actualizadas) {
+            try {
+                await _encolarGuardado();
+            } catch (error) {
+                console.warn('[state.js] No se pudieron fijar precios antiguos:', error);
+            }
+        }
     } catch (e) {
         console.error("[state.js] Error loading from IndexedDB:", e);
         // Fallback: try localStorage directly (shouldn't happen after migration)

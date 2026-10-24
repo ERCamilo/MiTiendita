@@ -8,7 +8,7 @@ import {
     state, registrarPedidoConfirmado, registrarAbonoConfirmado,
     calcularMontoRestanteCliente, cerrarPeriodoConfirmado, registrarGasto,
     registrarPedidoConfirmado as registrarPedido, calcularConsumoCliente,
-    exportarTodo as respaldoConfirmado, reducirVentaRapida
+    exportarTodo as respaldoConfirmado, reducirVentaRapida, cargarEstado
 } from '../js/state.js';
 import { buscarClientes, ordenarPorSaldo, movimientosCronologicos } from '../js/clientQueries.js';
 
@@ -119,4 +119,17 @@ test('HU02: búsqueda sin tildes, orden por saldo y cronología', () => {
     ], pagos: [
         { clienteId: 'c1', fechaIso: '2026-10-24T14:00:00Z' }
     ] }, 'c1').map(x => x.tipo), ['pedido', 'pago']);
+});
+
+
+test('HU01: ventas heredadas reciben precio estimado bloqueado en la primera carga', async () => {
+    state.ventas = [{ id: 'vlegacy', clienteId: 'c1', productoId: 'p1',
+        cantidad: 2, periodo: 1, fechaIso: '2025-01-01T00:00:00Z' }];
+    await saveState(state);
+    await cargarEstado();
+    assert.equal(state.ventas[0].precioUnitario, 100);
+    assert.equal(state.ventas[0].precioInferidoDelCatalogo, true);
+    state.productos[0].precio = 999;
+    assert.equal(calcularMontoRestanteCliente('c1'), 240);
+    assert.equal((await loadAllState()).ventas[0].precioUnitario, 100);
 });
