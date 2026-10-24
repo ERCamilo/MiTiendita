@@ -4,6 +4,7 @@
 import {
     loadAllState,
     saveState,
+    agregarClientesEnLote,
     clearAllStores,
     importarTodo,
     exportarTodo,
@@ -56,14 +57,47 @@ export async function cargarEstado() {
  * Exported as `guardarEnLocalStorage` for backwards compatibility with modals.
  */
 let _saveTimer = null;
+let _saveInFlight = Promise.resolve();
+function _encolarGuardado() {
+    // Serializa los guardados: una importación no debe competir con un guardado previo.
+    const current = _saveInFlight.catch(() => {}).then(() => saveState(state));
+    _saveInFlight = current;
+    current.catch(err => console.error("[state.js] Error saving to IndexedDB:", err));
+    return current;
+}
+
 function _guardarEstado() {
-    // Debounce: batch rapid writes into a single IndexedDB transaction
     if (_saveTimer) clearTimeout(_saveTimer);
     _saveTimer = setTimeout(() => {
-        saveState(state).catch(err => {
-            console.error("[state.js] Error saving to IndexedDB:", err);
-        });
+        _saveTimer = null;
+        void _encolarGuardado();
     }, 50);
+}
+
+/** Agrega clientes de una lista externa sin reemplazar datos contables. */
+export async function anexarClientesImportados(filas) {
+    if (!Array.isArray(filas) || filas.length === 0) return 0;
+    if (_saveTimer) {
+        clearTimeout(_saveTimer);
+        _saveTimer = null;
+        await _encolarGuardado();
+    } else {
+        await _saveInFlight;
+    }
+
+    const clientes = filas.map((fila, index) => withSyncMeta({
+        id: "c_import_" + (globalThis.crypto?.randomUUID?.() ||
+            Date.now() + "_" + index + "_" + Math.random().toString(36).slice(2)),
+        numeroOrden: fila.numeroOrden,
+        nombre: fila.nombre,
+        telefono: "",
+        deuda_anterior: 0,
+        pagado_en_periodo: false,
+    }, true));
+
+    await agregarClientesEnLote(clientes); // Una única transacción, éxito o nada.
+    state.clientes.push(...clientes);
+    return clientes.length;
 }
 
 // Backwards-compatible export name — all modals import this
