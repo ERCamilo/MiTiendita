@@ -6,9 +6,9 @@ import {
     saveState,
     agregarClientesEnLote,
     clearAllStores,
-    importarTodo,
-    exportarTodo,
     withSyncMeta,
+    importarTodo as importarTodoEnDB,
+    exportarTodo as exportarTodoEnDB,
 } from './db.js';
 
 // ─── In-Memory State (synchronous reads) ──────────────────────────────
@@ -19,6 +19,7 @@ export let state = {
     colorTema: "coral",
     periodoActual: 1,
     gastosOperativos: 0,
+    gastos: [],
     clientes: [],
     productos: [],
     ventas: [],
@@ -40,6 +41,7 @@ export async function cargarEstado() {
         state.colorTema        = loaded.colorTema         || "coral";
         state.periodoActual    = loaded.periodoActual     || 1;
         state.gastosOperativos = loaded.gastosOperativos  || 0;
+        state.gastos = loaded.gastos || [];
         state.clientes         = loaded.clientes          || [];
         state.productos        = loaded.productos         || [];
         state.ventas           = loaded.ventas            || [];
@@ -115,6 +117,7 @@ function _fallbackCargarLocalStorage() {
             state.colorTema        = parsed.colorTema         || "azul";
             state.periodoActual    = parsed.periodoActual     || 1;
             state.gastosOperativos = parsed.gastosOperativos  || 0;
+            state.gastos = parsed.gastos || [];
             state.clientes         = parsed.clientes         || [];
             state.productos        = parsed.productos        || [];
             state.ventas           = parsed.ventas            || [];
@@ -139,11 +142,17 @@ export async function resetearTodosLosDatos() {
     state.colorTema = "coral";
     state.periodoActual = 1;
     state.gastosOperativos = 0;
+    state.gastos = [];
     state.clientes = [];
     state.productos = [];
     state.ventas = [];
     state.pagos = [];
     state.historicoCierres = [];
+    if (_saveTimer) {
+        clearTimeout(_saveTimer);
+        _saveTimer = null;
+    }
+    await _saveInFlight;
     await clearAllStores();
 }
 
@@ -154,6 +163,7 @@ export function cargarDatosDemostracion() {
     state.colorTema = "coral";
     state.periodoActual = 1;
     state.gastosOperativos = 0;
+    state.gastos = [];
     state.clientes = [
         { id: "c_1", nombre: "Juan Pérez", telefono: "555-0192", deuda_anterior: 0, pagado_en_periodo: false, createdAt: ahora, updatedAt: ahora, _syncStatus: 'pending', _lastSyncedAt: null, _deleted: false },
         { id: "c_2", nombre: "María Gómez", telefono: "555-0143", deuda_anterior: 120, pagado_en_periodo: false, createdAt: ahora, updatedAt: ahora, _syncStatus: 'pending', _lastSyncedAt: null, _deleted: false },
@@ -176,7 +186,165 @@ export function cargarDatosDemostracion() {
 
 // ─── Backup Export / Import (delegated to db.js) ──────────────────────
 
-export { exportarTodo, importarTodo };
+/** Wait for pending writes so a backup includes the last action. */
+export async function exportarTodo() {
+    if (_saveTimer) {
+        clearTimeout(_saveTimer);
+        _saveTimer = null;
+        await _encolarGuardado();
+    }
+    await _saveInFlight;
+    return exportarTodoEnDB();
+}
+
+/** Do not allow an older deferred save to overwrite a full restore. */
+export async function importarTodo(data) {
+    if (_saveTimer) {
+        clearTimeout(_saveTimer);
+        _saveTimer = null;
+        await _encolarGuardado();
+    }
+    await _saveInFlight;
+    return importarTodoEnDB(data);
+}
+
+/**
+ * Commit a business action only after a durable atomic IndexedDB save.
+ * Roll back the in-memory mutation if the transaction fails.
+ */
+let _businessQueue = Promise.resolve();
+export function guardarCambioConfirmado(mutate) {
+    const job = _businessQueue.catch(() => {}).then(async () => {
+        if (_saveTimer) {
+            clearTimeout(_saveTimer);
+            _saveTimer = null;
+            await _encolarGuardado();
+        }
+        await _saveInFlight;
+        const before = copiarEstadoParaRevertir(state);
+        let result;
+        try {
+            result = mutate(state);
+            await _encolarGuardado();
+        } catch (error) {
+            Object.assign(state, before);
+            throw error;
+        }
+        return result;
+    });
+    _businessQueue = job.catch(() => {});
+    return job;
+}
+
+/** Store a detailed expense without changing the preexisting expense total semantics. */
+export async function registrarGasto(monto, categoria = 'otros', descripcion = '') {
+    const cantidad = Number(monto);
+    if (!Number.isFinite(cantidad) || cantidad <= 0) throw new Error('Monto de gasto inválido');
+    if (!['insumos', 'empaques', 'transporte', 'servicios', 'otros'].includes(categoria))
+        throw new Error('Categoría de gasto inválida');
+    const ahora = new Date().toISOString();
+    return guardarCambioConfirmado(s => {
+        const gasto = withSyncMeta({
+            id: idNuevo('g'), periodo: s.periodoActual,
+            fechaIso: ahora, monto: cantidad, categoria,
+            descripcion: String(descripcion).trim().slice(0, 250)
+        });
+        s.gastos.push(gasto);
+        s.gastosOperativos = Math.round((s.gastosOperativos + cantidad) * 100) / 100;
+        return gasto;
+    });
+}
+
+function idNuevo(prefijo) {
+    const valor = globalThis.crypto?.randomUUID?.() ||
+        Date.now().toString(36) + '_' + Math.random().toString(36).slice(2);
+    return prefijo + '_' + valor;
+}
+
+function copiarEstadoParaRevertir(value) {
+    return typeof structuredClone === 'function'
+        ? structuredClone(value) : JSON.parse(JSON.stringify(value));
+}
+
+/** Record a sale only once its ledger update was committed. */
+export function registrarPedidoConfirmado(clienteId, items) {
+    if (!Array.isArray(items) || items.length === 0) throw new Error('Pedido vacío');
+    return guardarCambioConfirmado(s => {
+        const cliente = s.clientes.find(c => c.id === clienteId);
+        if (!cliente || cliente._deleted) throw new Error('Cliente no encontrado');
+        const ahora = new Date();
+        const fechaStr = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) +
+            ', ' + ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true });
+        let total = 0;
+        items.forEach(item => {
+            const producto = s.productos.find(p => p.id === item.productoId && !p._deleted);
+            const cantidad = Number(item.cantidad);
+            if (!producto || !Number.isSafeInteger(cantidad) || cantidad <= 0)
+                throw new Error('Producto o cantidad inválida');
+            const precioUnitario = Number(producto.precio);
+            const costoUnitario = Number(producto.costo ?? 0);
+            if (!Number.isFinite(precioUnitario) || precioUnitario < 0 ||
+                !Number.isFinite(costoUnitario) || costoUnitario < 0)
+                throw new Error('Precio o costo inválido');
+            total += precioUnitario * cantidad;
+            s.ventas.push(withSyncMeta({
+                id: idNuevo('v'), clienteId, productoId: producto.id,
+                cantidad, precioUnitario, costoUnitario, periodo: s.periodoActual,
+                fecha: fechaStr, fechaIso: ahora.toISOString()
+            }));
+        });
+        cliente.pagado_en_periodo = false;
+        return total;
+    });
+}
+
+/** Persist an abono and related account flag together or not at all. */
+export function registrarAbonoConfirmado(clienteId, monto) {
+    return guardarCambioConfirmado(s => {
+        const cliente = s.clientes.find(c => c.id === clienteId && !c._deleted);
+        if (!cliente) throw new Error('Cliente no encontrado');
+        const cantidad = Number(monto);
+        const pendiente = calcularMontoRestanteCliente(clienteId);
+        if (!Number.isFinite(cantidad) || cantidad <= 0 ||
+            cantidad > pendiente + 0.00001) throw new Error('Abono inválido o mayor al saldo');
+        const ahora = new Date();
+        const pago = withSyncMeta({
+            id: idNuevo('pg'), clienteId,
+            monto: cantidad, periodo: s.periodoActual,
+            fecha: ahora.toLocaleDateString('es-ES') + ', ' + ahora.toLocaleTimeString('es-ES'),
+            fechaIso: ahora.toISOString()
+        });
+        s.pagos.push(pago);
+        cliente.pagado_en_periodo = calcularMontoRestanteCliente(clienteId) <= 0.009;
+        return pago;
+    });
+}
+
+export function cerrarPeriodoConfirmado() {
+    return guardarCambioConfirmado(s => {
+        const periodo = s.periodoActual;
+        let ingresos = 0, costo = 0;
+        s.ventas.filter(v => v.periodo === periodo && !v._deleted).forEach(v => {
+            const p = s.productos.find(prod => prod.id === v.productoId);
+            ingresos += (v.precioUnitario ?? p?.precio ?? 0) * v.cantidad;
+            costo += (v.costoUnitario ?? p?.costo ?? 0) * v.cantidad;
+        });
+        const fecha = new Date();
+        s.historicoCierres.push({
+            id: periodo, fecha: fecha.toLocaleString('es-ES'),
+            ingresos: ingresos.toFixed(2), costoProd: costo.toFixed(2),
+            gastoOp: s.gastosOperativos.toFixed(2),
+            gananciaNeta: (ingresos - costo - s.gastosOperativos).toFixed(2)
+        });
+        for (const c of s.clientes) {
+            c.deuda_anterior = calcularMontoRestanteCliente(c.id);
+            c.pagado_en_periodo = false;
+        }
+        s.periodoActual = periodo + 1;
+        s.gastosOperativos = 0;
+        return periodo;
+    });
+}
 
 // ─── Accounting Calculations (pure, synchronous) ─────────────────────
 
@@ -186,7 +354,7 @@ export function calcularConsumoCliente(clienteId) {
         .filter(v => v.clienteId === clienteId && v.periodo === state.periodoActual && !v._deleted)
         .reduce((total, v) => {
             const prod = state.productos.find(p => p.id === v.productoId);
-            return total + (prod ? (prod.precio * v.cantidad) : 0);
+            return total + (v.precioUnitario ?? prod?.precio ?? 0) * v.cantidad;
         }, 0);
 }
 
@@ -225,7 +393,7 @@ export function calcularConsumoHoyCliente(clienteId) {
         })
         .reduce((total, v) => {
             const prod = state.productos.find(p => p.id === v.productoId);
-            return total + (prod ? (prod.precio * v.cantidad) : 0);
+            return total + (v.precioUnitario ?? prod?.precio ?? 0) * v.cantidad;
         }, 0);
 }
 
@@ -257,7 +425,7 @@ export function calcularTotalVendidoHoy() {
         })
         .reduce((total, v) => {
             const prod = state.productos.find(p => p.id === v.productoId);
-            return total + (prod ? (prod.precio * v.cantidad) : 0);
+            return total + (v.precioUnitario ?? prod?.precio ?? 0) * v.cantidad;
         }, 0);
 }
 
@@ -277,7 +445,7 @@ export function calcularTotalVendidoCiclo() {
         .filter(v => v.periodo === state.periodoActual && !v._deleted)
         .reduce((total, v) => {
             const prod = state.productos.find(p => p.id === v.productoId);
-            return total + (prod ? (prod.precio * v.cantidad) : 0);
+            return total + (v.precioUnitario ?? prod?.precio ?? 0) * v.cantidad;
         }, 0);
 }
 
@@ -308,41 +476,22 @@ export function calcularCantidadProductoCliente(clienteId, productoId) {
 }
 
 export function agregarVentaRapida(clienteId, productoId, cantidad = 1) {
-    const ahora = new Date();
-    const fechaStr = `${ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}, ${ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-
-    state.ventas.push(withSyncMeta({
-        id: "v_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
-        clienteId,
-        productoId,
-        cantidad,
-        periodo: state.periodoActual,
-        fecha: fechaStr,
-        fechaIso: ahora.toISOString()
-    }, true));
-
-    guardarEnLocalStorage();
+    return registrarPedidoConfirmado(clienteId, [{ productoId, cantidad }]);
 }
 
 export function reducirVentaRapida(clienteId, productoId) {
-    const idx = state.ventas.map(v => v).reverse().findIndex(
-        v => v.clienteId === clienteId && v.productoId === productoId && v.periodo === state.periodoActual && !v._deleted
-    );
-
-    if (idx !== -1) {
-        const realIdx = state.ventas.length - 1 - idx;
-        const venta = state.ventas[realIdx];
-        if (venta.cantidad > 1) {
-            venta.cantidad -= 1;
-            venta.updatedAt = new Date().toISOString();
-            venta._syncStatus = 'pending';
-        } else {
-            state.ventas.splice(realIdx, 1);
+    return guardarCambioConfirmado(s => {
+        for (let i = s.ventas.length - 1; i >= 0; i--) {
+            const v = s.ventas[i];
+            if (v.clienteId === clienteId && v.productoId === productoId &&
+                v.periodo === s.periodoActual && !v._deleted) {
+                if (v.cantidad > 1) v.cantidad -= 1;
+                else s.ventas.splice(i, 1);
+                return true;
+            }
         }
-        guardarEnLocalStorage();
-        return true;
-    }
-    return false;
+        return false;
+    });
 }
 
 // 8. Theme System

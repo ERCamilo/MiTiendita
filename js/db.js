@@ -2,7 +2,7 @@
 // Replace this single file to switch to Firebase / Supabase.
 
 const DB_NAME = 'storeflow_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORES = {
     config:           { keyPath: 'key' },
     clientes:         { keyPath: 'id', indices: ['nombre', '_syncStatus'] },
@@ -10,6 +10,7 @@ const STORES = {
     ventas:           { keyPath: 'id', indices: ['clienteId', 'productoId', 'periodo', '_syncStatus'] },
     pagos:            { keyPath: 'id', indices: ['clienteId', 'periodo', '_syncStatus'] },
     historicoCierres: { keyPath: 'id', indices: ['periodo'] },
+    gastos:           { keyPath: 'id', indices: ['periodo', 'categoria', '_syncStatus'] },
 };
 
 let dbInstance = null;
@@ -38,6 +39,10 @@ function openDB() {
 
         request.onsuccess = (event) => {
             dbInstance = event.target.result;
+            dbInstance.onversionchange = () => {
+                dbInstance.close();
+                dbInstance = null;
+            };
             resolve(dbInstance);
         };
 
@@ -116,7 +121,8 @@ export async function loadAllState() {
 
     // Check if we need to migrate from localStorage
     const existingClientes = await getAll('clientes');
-    if (existingClientes.length === 0) {
+    const previousConfig = await getAll('config');
+    if (existingClientes.length === 0 && previousConfig.length === 0) {
         const migrated = await migrarDesdeLocalStorage();
         if (migrated) {
             return loadAllState(); // re-read after migration
@@ -139,82 +145,85 @@ export async function loadAllState() {
         ventas:           await getAll('ventas'),
         pagos:            await getAll('pagos'),
         historicoCierres: await getAll('historicoCierres'),
+        gastos:           await getAll('gastos'),
     };
 }
 
-/**
- * Persist the entire in-memory state to IndexedDB.
- * Uses a single transaction per store for performance.
- */
-export async function saveState(state) {
-    await openDB();
+// All writes in this section are one transaction, including configurations.
+// An abort leaves all previous records intact; no partial clear/rewrite.
+const ENTITIES = ['clientes', 'productos', 'ventas', 'pagos', 'historicoCierres', 'gastos'];
 
-    // Save config as key-value pairs
-    const configStore = tx('config', 'readwrite');
-    CONFIG_KEYS.forEach(key => {
-        configStore.put({ key, value: state[key] });
-    });
-
-    // Save entity arrays (clear + re-put for simplicity and consistency)
-    const entityStores = ['clientes', 'productos', 'ventas', 'pagos', 'historicoCierres'];
-    for (const name of entityStores) {
-        await clearStore(name);
-        const records = state[name] || [];
-        if (records.length > 0) {
-            await putAllRecords(name, records);
+function writeTransaction(mutator) {
+    return openDB().then(db => new Promise((resolve, reject) => {
+        const transaction = db.transaction(Object.keys(STORES), 'readwrite');
+        transaction.oncomplete = () => resolve();
+        transaction.onabort = () => reject(transaction.error || new Error('Transacción cancelada'));
+        transaction.onerror = () => { /* onabort rejects; do not resolve on request success */ };
+        try { mutator(transaction); }
+        catch (error) {
+            transaction.abort();
+            reject(error);
         }
-    }
+    }));
 }
 
-/**
- * Clear all stores (factory reset).
- */
-export async function clearAllStores() {
-    await openDB();
-    const allStores = Object.keys(STORES);
-    for (const name of allStores) {
-        await clearStore(name);
-    }
+export async function saveState(state) {
+    // Snapshot before any asynchronous operation.
+    const config = CONFIG_KEYS.map(key => ({ key, value: state[key] }));
+    const contents = Object.fromEntries(ENTITIES.map(key => [key, (typeof structuredClone === 'function' ? structuredClone(state[key] || []) : JSON.parse(JSON.stringify(state[key] || [])))]));
+    await writeTransaction(transaction => {
+        const configStore = transaction.objectStore('config');
+        configStore.clear();
+        config.forEach(record => configStore.put(record));
+        for (const name of ENTITIES) {
+            const store = transaction.objectStore(name);
+            store.clear();
+            contents[name].forEach(record => store.put(record));
+        }
+    });
 }
 
-// ─── Backup Export / Import ───────────────────────────────────────────
+/** Remove everything atomically for explicit factory reset. */
+export function clearAllStores() {
+    return writeTransaction(transaction => {
+        Object.keys(STORES).forEach(name => transaction.objectStore(name).clear());
+    });
+}
 
-/**
- * Export entire DB as a plain JSON-serializable object.
- */
+// ─── Backup Export / Import ────────────────────────────────────────────
+
 export async function exportarTodo() {
     return loadAllState();
 }
 
-/**
- * Import data from a backup object, overwriting all stores.
- */
+/** Restore the entire backup atomically; malformed records abort all changes. */
 export async function importarTodo(data) {
-    await openDB();
-    await clearAllStores();
-
-    // Config
-    const configStore = tx('config', 'readwrite');
-    CONFIG_KEYS.forEach(key => {
-        if (data[key] !== undefined) {
-            configStore.put({ key, value: data[key] });
-        }
-    });
-
-    // Entities
-    const entityStores = ['clientes', 'productos', 'ventas', 'pagos', 'historicoCierres'];
-    for (const name of entityStores) {
-        const records = data[name] || [];
-        if (records.length > 0) {
-            const enriched = records.map(r => withSyncMeta(r, !r.createdAt));
-            await putAllRecords(name, enriched);
-        }
+    if (!data || typeof data !== 'object' || !Array.isArray(data.clientes) ||
+        !Array.isArray(data.productos)) {
+        throw new Error('Formato de copia no válido');
     }
+    const contents = Object.fromEntries(ENTITIES.map(key => {
+        const rows = data[key] || [];
+        if (!Array.isArray(rows)) throw new Error('Lista inválida: ' + key);
+        return [key, rows.map(record => withSyncMeta(record, !record.createdAt))];
+    }));
+    await writeTransaction(transaction => {
+        for (const name of Object.keys(STORES)) transaction.objectStore(name).clear();
+        const configStore = transaction.objectStore('config');
+        CONFIG_KEYS.forEach(key => {
+            if (data[key] !== undefined) configStore.put({ key, value: data[key] });
+        });
+        ENTITIES.forEach(key => {
+            const store = transaction.objectStore(key);
+            contents[key].forEach(record => store.put(record));
+        });
+    });
 }
 
 // ─── localStorage Migration ──────────────────────────────────────────
 
 async function migrarDesdeLocalStorage() {
+    if (typeof localStorage === 'undefined') return false;
     const raw = localStorage.getItem('storeflow_ledger_state_v2');
     if (!raw) return false;
 
@@ -236,6 +245,7 @@ async function migrarDesdeLocalStorage() {
             ventas:           enrich(parsed.ventas),
             pagos:            enrich(parsed.pagos),
             historicoCierres: enrich(parsed.historicoCierres),
+            gastos:           enrich(parsed.gastos),
         });
 
         // Remove old localStorage key after successful migration
