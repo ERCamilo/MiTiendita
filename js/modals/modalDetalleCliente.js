@@ -1,5 +1,5 @@
 // js/modals/modalDetalleCliente.js - Modal para desglose detallado de compras del cliente
-import { state, calcularConsumoCliente, calcularPagosCliente, calcularMontoRestanteCliente, guardarEnLocalStorage } from '../state.js';
+import { state, calcularConsumoCliente, calcularPagosCliente, calcularMontoRestanteCliente, registrarAbonoConfirmado } from '../state.js';
 import { showToast } from '../toast.js';
 
 let selectedClienteId = null;
@@ -179,7 +179,7 @@ function renderVistaPorDia(ventasCliente) {
         const itemsHtml = ventas.map(v => {
             const p = state.productos.find(prod => prod.id === v.productoId);
             if (!p) return '';
-            const lineTotal = p.precio * v.cantidad;
+            const lineTotal = (v.precioUnitario ?? p.precio) * v.cantidad;
             subtotalDia += lineTotal;
             const avatarHtml = getAvatarHtml(p);
             const hora = v.fecha ? v.fecha.split(',')[1]?.trim() || '' : '';
@@ -193,7 +193,7 @@ function renderVistaPorDia(ventasCliente) {
                         </div>
                     </div>
                     <div class="text-right shrink-0">
-                        <span class="text-[11px] text-m3-outline">${v.cantidad}× $${p.precio.toFixed(2)}</span>
+                        <span class="text-[11px] text-m3-outline">${v.cantidad}× $${(v.precioUnitario ?? p.precio).toFixed(2)}</span>
                         <span class="font-bold text-m3-onSurface text-xs block">$${lineTotal.toFixed(2)}</span>
                     </div>
                 </div>
@@ -236,7 +236,7 @@ function renderVistaPorProducto(ventasCliente) {
         const p = state.productos.find(prod => prod.id === v.productoId);
         if (p) {
             porProducto[v.productoId].cantidad += v.cantidad;
-            porProducto[v.productoId].total += p.precio * v.cantidad;
+            porProducto[v.productoId].total += (v.precioUnitario ?? p.precio) * v.cantidad;
         }
     });
 
@@ -261,7 +261,7 @@ function renderVistaPorProducto(ventasCliente) {
                     <div class="flex items-center space-x-2 mt-1">
                         <span class="text-[10px] text-m3-outline">${data.cantidad} ${data.cantidad === 1 ? 'unidad' : 'unidades'}</span>
                         <span class="text-[10px] text-m3-outline">·</span>
-                        <span class="text-[10px] text-m3-outline">$${p.precio.toFixed(2)} c/u</span>
+                        <span class="text-[10px] text-m3-outline">$${(data.total / (data.cantidad || 1)).toFixed(2)} prom. c/u</span>
                     </div>
                     <!-- Barra de proporción -->
                     <div class="mt-1.5 w-full h-1.5 bg-m3-outlineVariant/30 rounded-full overflow-hidden">
@@ -292,27 +292,27 @@ export function cerrarModalDetalleCliente() {
     selectedClienteId = null;
 }
 
-function marcarComoTotalmentePagado() {
+let liquidacionEnProceso = false;
+async function marcarComoTotalmentePagado() {
+    if (liquidacionEnProceso) return;
     const cliente = state.clientes.find(c => c.id === selectedClienteId);
-    if (cliente) {
-        const restante = calcularMontoRestanteCliente(cliente.id);
-        if (restante > 0) {
-            const ahora = new Date();
-            const fechaStr = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) + ", " + ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true });
-            if (!state.pagos) state.pagos = [];
-            state.pagos.push({
-                id: 'pg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-                clienteId: cliente.id,
-                monto: restante,
-                periodo: state.periodoActual,
-                fecha: fechaStr
-            });
-        }
-        cliente.deuda_anterior = 0;
-        cliente.pagado_en_periodo = true;
-        guardarEnLocalStorage();
+    if (!cliente) return;
+    const restante = calcularMontoRestanteCliente(cliente.id);
+    if (restante <= 0) {
+        showToast('Esta cuenta ya está saldada.');
+        return;
+    }
+    liquidacionEnProceso = true;
+    try {
+        await registrarAbonoConfirmado(cliente.id, restante);
+        // Nunca borrar deuda_anterior: el pago queda registrado en el período.
         cerrarModalDetalleCliente();
-        if (onDetalleActualizadoCallback) onDetalleActualizadoCallback();
-        showToast(`¡La cuenta de ${cliente.nombre} ha sido liquidada en su totalidad!`);
+        onDetalleActualizadoCallback?.();
+        showToast('Cuenta liquidada y pago guardado correctamente.');
+    } catch (error) {
+        console.error('Error liquidando cuenta:', error);
+        showToast('No se pudo guardar la liquidación.', true);
+    } finally {
+        liquidacionEnProceso = false;
     }
 }

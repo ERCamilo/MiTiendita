@@ -1,7 +1,9 @@
 import { 
     state, 
     cargarEstado,
-    guardarEnLocalStorage, 
+    guardarEnLocalStorage,
+    registrarGasto,
+    cerrarPeriodoConfirmado,
     calcularConsumoCliente, 
     calcularPagosCliente, 
     calcularMontoRestanteCliente, 
@@ -478,7 +480,7 @@ function renderMenuDelDia() {
 
         const btnPlus = card.querySelector('.btn-despacho-rapido');
         if (btnPlus) {
-            btnPlus.addEventListener('click', (e) => {
+            btnPlus.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 despacharProductoDirecto(prod.id);
             });
@@ -494,16 +496,21 @@ function renderMenuDelDia() {
     if (window.lucide) window.lucide.createIcons();
 }
 
-function despacharProductoDirecto(productoId) {
+async function despacharProductoDirecto(productoId) {
     const prod = state.productos.find(p => p.id === productoId);
     if (!prod) return;
 
     // Si hay un cliente expandido o seleccionado, cargar directamente
     if (clienteExpandidoId) {
         const cli = state.clientes.find(c => c.id === clienteExpandidoId);
-        agregarVentaRapida(clienteExpandidoId, productoId, 1);
-        render();
-        showToast(`⚡ +1 ${prod.nombre} agregado a ${cli ? cli.nombre : 'cliente'}`);
+        try {
+            await agregarVentaRapida(clienteExpandidoId, productoId, 1);
+            render();
+            showToast('+1 ' + prod.nombre + ' agregado a ' + (cli?.nombre || 'cliente'));
+        } catch (error) {
+            console.error(error);
+            showToast('No se pudo guardar el consumo.', true);
+        }
         return;
     }
 
@@ -708,19 +715,29 @@ function renderClientes() {
             const btnPlus = card.querySelector('.btn-quick-plus');
             const btnMinus = card.querySelector('.btn-quick-minus');
             if (btnPlus) {
-                btnPlus.addEventListener('click', (e) => {
+                btnPlus.addEventListener('click', async (e) => {
                     e.stopPropagation();
-                    agregarVentaRapida(c.id, prodRapido.id, 1);
-                    render();
-                    showToast(`+1 ${prodRapido.nombre} ➔ ${c.nombre}`);
+                    try {
+                        await agregarVentaRapida(c.id, prodRapido.id, 1);
+                        render();
+                        showToast('+1 ' + prodRapido.nombre + ' agregado a ' + c.nombre);
+                    } catch (error) {
+                        console.error(error);
+                        showToast('No se pudo guardar el consumo.', true);
+                    }
                 });
             }
             if (btnMinus) {
-                btnMinus.addEventListener('click', (e) => {
+                btnMinus.addEventListener('click', async (e) => {
                     e.stopPropagation();
-                    if (reducirVentaRapida(c.id, prodRapido.id)) {
-                        render();
-                        showToast(`-1 ${prodRapido.nombre} ➔ ${c.nombre}`);
+                    try {
+                        if (await reducirVentaRapida(c.id, prodRapido.id)) {
+                            render();
+                            showToast('-1 ' + prodRapido.nombre + ' para ' + c.nombre);
+                        }
+                    } catch (error) {
+                        console.error(error);
+                        showToast('No se pudo actualizar el consumo.', true);
                     }
                 });
             }
@@ -1021,12 +1038,10 @@ function renderReportes() {
     let costoProduccion = 0;
 
     state.ventas.forEach(v => {
-        if (v.periodo === state.periodoActual) {
+        if (v.periodo === state.periodoActual && !v._deleted) {
             const p = state.productos.find(prod => prod.id === v.productoId);
-            if (p) {
-                ingresosVentas += p.precio * v.cantidad;
-                costoProduccion += p.costo * v.cantidad;
-            }
+            ingresosVentas += (v.precioUnitario ?? p?.precio ?? 0) * v.cantidad;
+            costoProduccion += (v.costoUnitario ?? p?.costo ?? 0) * v.cantidad;
         }
     });
 
@@ -1078,20 +1093,22 @@ function renderReportes() {
     }
 }
 
-function guardarGastoOperativo() {
-    const inputGasto = document.getElementById('gasto-op-input');
-    const monto = parseFloat(inputGasto.value);
-
-    if (isNaN(monto) || monto < 0) {
-        showToast("Ingresa un monto válido.", true);
+async function guardarGastoOperativo() {
+    const input = document.getElementById('gasto-op-input');
+    const monto = Number(input.value);
+    if (!Number.isFinite(monto) || monto <= 0) {
+        showToast('Ingresa un gasto positivo válido.', true);
         return;
     }
-
-    state.gastosOperativos += monto;
-    inputGasto.value = '';
-    guardarEnLocalStorage();
-    renderReportes();
-    showToast(`¡Gasto de $${monto.toFixed(2)} registrado en el período actual!`);
+    try {
+        await registrarGasto(monto, 'otros');
+        input.value = '';
+        renderReportes();
+        showToast('Gasto guardado correctamente.');
+    } catch (error) {
+        console.error(error);
+        showToast('No se pudo guardar el gasto.', true);
+    }
 }
 
 // 7. Cierre de Período Contable
@@ -1104,49 +1121,19 @@ function promptCerrarPeriodo() {
     );
 }
 
-function ejecutarCierrePeriodo() {
-    let ingresosVentasPeriodo = 0;
-    let costoProduccionPeriodo = 0;
-
-    state.ventas.forEach(v => {
-        if (v.periodo === state.periodoActual) {
-            const p = state.productos.find(prod => prod.id === v.productoId);
-            if (p) {
-                ingresosVentasPeriodo += p.precio * v.cantidad;
-                costoProduccionPeriodo += p.costo * v.cantidad;
-            }
-        }
-    });
-
-    const gananciaNeta = ingresosVentasPeriodo - (costoProduccionPeriodo + state.gastosOperativos);
-    const ahora = new Date();
-    const fechaCierreStr = ahora.toLocaleDateString('es-ES') + " " + ahora.toLocaleTimeString('es-ES', {hour: '2-digit', minute:'2-digit'});
-
-    if (!state.historicoCierres) state.historicoCierres = [];
-    state.historicoCierres.push({
-        id: state.periodoActual,
-        fecha: fechaCierreStr,
-        ingresos: ingresosVentasPeriodo.toFixed(2),
-        costoProd: costoProduccionPeriodo.toFixed(2),
-        gastoOp: state.gastosOperativos.toFixed(2),
-        gananciaNeta: gananciaNeta.toFixed(2)
-    });
-
-    // Traspaso de Deudas Inteligente
-    state.clientes.forEach(c => {
-        const consumoPeriodo = calcularConsumoCliente(c.id);
-        const pagosPeriodo = calcularPagosCliente(c.id);
-        const deudaRestante = Math.max(0, (c.deuda_anterior + consumoPeriodo) - pagosPeriodo);
-
-        c.deuda_anterior = deudaRestante;
-        c.pagado_en_periodo = false;
-    });
-
-    state.periodoActual++;
-    state.gastosOperativos = 0;
-    clienteExpandidoId = null;
-
-    guardarEnLocalStorage();
-    render();
-    showToast(`¡Período #${state.periodoActual - 1} cerrado! Se inició el Período #${state.periodoActual}`);
+let cierreEnProceso = false;
+async function ejecutarCierrePeriodo() {
+    if (cierreEnProceso) return;
+    cierreEnProceso = true;
+    try {
+        const cerrado = await cerrarPeriodoConfirmado();
+        clienteExpandidoId = null;
+        render();
+        showToast('Período #' + cerrado + ' cerrado y guardado.');
+    } catch (error) {
+        console.error(error);
+        showToast('No se pudo cerrar el período. No se guardaron cambios.', true);
+    } finally {
+        cierreEnProceso = false;
+    }
 }

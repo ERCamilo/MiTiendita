@@ -1,5 +1,5 @@
 // js/modals/modalAbono.js - Modal para registrar abonos y liquidaciones de clientes
-import { state, guardarEnLocalStorage, calcularMontoRestanteCliente } from '../state.js';
+import { state, registrarAbonoConfirmado, calcularMontoRestanteCliente } from '../state.js';
 import { showToast } from '../toast.js';
 
 let selectedAbonoClienteId = null;
@@ -84,44 +84,30 @@ function llenarAbonoTotal() {
     if (inputMonto) inputMonto.value = saldoPendiente.toFixed(2);
 }
 
-function ejecutarRegistrarAbono() {
-    if (!selectedAbonoClienteId) return;
+let procesandoAbono = false;
+async function ejecutarRegistrarAbono() {
+    if (!selectedAbonoClienteId || procesandoAbono) return;
     const c = state.clientes.find(cli => cli.id === selectedAbonoClienteId);
     if (!c) return;
-
-    const inputMonto = document.getElementById('abono-monto');
-    const monto = parseFloat(inputMonto.value);
-    const saldoPendiente = calcularMontoRestanteCliente(c.id);
-
-    if (isNaN(monto) || monto <= 0) {
-        showToast("Por favor ingresa un monto válido a abonar.", true);
+    const monto = Number(document.getElementById('abono-monto').value);
+    const saldo = calcularMontoRestanteCliente(c.id);
+    if (!Number.isFinite(monto) || monto <= 0 || monto > saldo + 0.00001) {
+        showToast('El abono debe ser positivo y no superar la deuda.', true);
         return;
     }
-
-    if (monto > (saldoPendiente + 0.01)) {
-        showToast(`El monto no puede exceder el saldo restante ($${saldoPendiente.toFixed(2)})`, true);
-        return;
+    procesandoAbono = true;
+    const boton = document.getElementById('btn-ejecutar-abono');
+    boton.disabled = true;
+    try {
+        await registrarAbonoConfirmado(c.id, monto);
+        cerrarModalAbono();
+        onAbonoRegistradoCallback?.(c);
+        showToast('Abono registrado y guardado correctamente.');
+    } catch (error) {
+        console.error('Error guardando abono:', error);
+        showToast('El abono no se guardó. Inténtalo de nuevo.', true);
+    } finally {
+        procesandoAbono = false;
+        boton.disabled = false;
     }
-
-    const ahora = new Date();
-    const fechaStr = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) + ", " + ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-    if (!state.pagos) state.pagos = [];
-    state.pagos.push({
-        id: 'pg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-        clienteId: c.id,
-        monto: monto,
-        periodo: state.periodoActual,
-        fecha: fechaStr
-    });
-
-    const nuevoRestante = calcularMontoRestanteCliente(c.id);
-    if (nuevoRestante <= 0.009) {
-        c.pagado_en_periodo = true;
-    }
-
-    guardarEnLocalStorage();
-    cerrarModalAbono();
-    if (onAbonoRegistradoCallback) onAbonoRegistradoCallback(c);
-    showToast(`¡Abono de $${monto.toFixed(2)} registrado para ${c.nombre}!`);
 }
