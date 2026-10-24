@@ -21,10 +21,6 @@ export function claveNumeroOrden(value) {
     return numero === null ? null : numero.replace(/^0+(?=\d)/, '');
 }
 
-function claveNombre(nombre) {
-    return String(nombre || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('es');
-}
-
 function obtenerFilas(data) {
     if (Array.isArray(data)) return data;
     if (data && typeof data === 'object') {
@@ -39,7 +35,6 @@ export function planificarImportacionClientes(data, clientesExistentes = []) {
     const filas = obtenerFilas(data);
     if (filas.length > MAX_FILAS) throw new Error('El archivo excede el máximo de 10,000 registros.');
     const numerosUsados = new Set(clientesExistentes.map(c => claveNumeroOrden(c.numeroOrden)).filter(c => c !== null));
-    const nombresUsados = new Set(clientesExistentes.map(c => claveNombre(c.nombre)).filter(Boolean));
     const nuevos = [];
     const omitidos = [];
 
@@ -51,10 +46,9 @@ export function planificarImportacionClientes(data, clientesExistentes = []) {
         const clave = claveNumeroOrden(numeroOrden);
         let motivo = null;
         if (numeroOrden === null) motivo = 'Número inválido o ausente';
-        else if (!nombre || nombre.length > MAX_NOMBRE || /[\u0000-\u001F\u007F]/.test(nombre))
+        else if (!nombre || nombre.length > MAX_NOMBRE || /[\u0000-\u001F\u007F<>]/.test(nombre))
             motivo = 'Nombre inválido o ausente';
         else if (numerosUsados.has(clave)) motivo = 'Número de orden repetido';
-        else if (nombresUsados.has(claveNombre(nombre))) motivo = 'Nombre ya existente o repetido';
 
         if (motivo) {
             omitidos.push({ fila: index + 1, numeroOrden: numeroOrden || '', nombre, motivo });
@@ -64,7 +58,6 @@ export function planificarImportacionClientes(data, clientesExistentes = []) {
         // Únicamente los dos campos solicitados; resto del JSON se descarta.
         nuevos.push({ numeroOrden, nombre });
         numerosUsados.add(clave);
-        nombresUsados.add(claveNombre(nombre));
     });
 
     return { total: filas.length, nuevos, omitidos };
