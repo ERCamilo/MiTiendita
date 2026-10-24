@@ -1,6 +1,7 @@
 // js/modals/modalNuevoCliente.js - Modal para registrar nuevos clientes
 import { state, guardarEnLocalStorage } from '../state.js';
 import { showToast } from '../toast.js';
+import { normalizarNumeroOrden, claveNumeroOrden } from '../clientImport.js';
 
 let onClienteCreadoCallback = null;
 
@@ -23,6 +24,10 @@ export function initModalNuevoCliente(onClienteCreado) {
                     <input type="text" id="nuevo-cliente-nombre" placeholder="Ej. Luis Ramírez" class="w-full p-3 rounded-2xl border border-m3-outlineVariant text-sm focus:outline-none focus:ring-2 focus:ring-m3-primary">
                 </div>
                 <div>
+                    <label for="nuevo-cliente-numero" class="block text-xs font-semibold text-m3-onSurfaceVariant mb-1">Número de orden (Opcional)</label>
+                    <input type="text" inputmode="numeric" id="nuevo-cliente-numero" placeholder="Ej. 001" maxlength="32" class="w-full p-3 rounded-2xl border border-m3-outlineVariant text-sm focus:outline-none focus:ring-2 focus:ring-m3-primary">
+                </div>
+                <div>
                     <label class="block text-xs font-semibold text-m3-onSurfaceVariant mb-1">Teléfono (Opcional)</label>
                     <input type="text" id="nuevo-cliente-telefono" placeholder="Ej. +52 1 55..." class="w-full p-3 rounded-2xl border border-m3-outlineVariant text-sm focus:outline-none focus:ring-2 focus:ring-m3-primary">
                 </div>
@@ -42,8 +47,10 @@ export function initModalNuevoCliente(onClienteCreado) {
 export function abrirModalNuevoCliente() {
     const inputNombre = document.getElementById('nuevo-cliente-nombre');
     const inputTel = document.getElementById('nuevo-cliente-telefono');
+    const inputNumero = document.getElementById('nuevo-cliente-numero');
     if (inputNombre) inputNombre.value = '';
     if (inputTel) inputTel.value = '';
+    if (inputNumero) inputNumero.value = '';
     
     document.getElementById('modal-nuevo-cliente').classList.remove('hidden');
     if (window.lucide) window.lucide.createIcons();
@@ -57,14 +64,27 @@ export function cerrarModalNuevoCliente() {
 function ejecutarCrearCliente() {
     const nombre = document.getElementById('nuevo-cliente-nombre').value.trim();
     const telefono = document.getElementById('nuevo-cliente-telefono').value.trim();
+    const numeroTexto = document.getElementById('nuevo-cliente-numero').value.trim();
+    const numeroOrden = numeroTexto ? normalizarNumeroOrden(numeroTexto) : null;
 
     if (!nombre) {
         showToast("Por favor ingresa el nombre del cliente", true);
         return;
     }
 
+    if (numeroTexto && numeroOrden === null) {
+        showToast("El número de orden debe contener únicamente dígitos.", true);
+        return;
+    }
+    if (numeroOrden !== null && state.clientes.some(c =>
+        claveNumeroOrden(c.numeroOrden) === claveNumeroOrden(numeroOrden))) {
+        showToast("Ya existe un cliente con ese número de orden.", true);
+        return;
+    }
+
     const nuevoCliente = {
-        id: "c_" + Date.now(),
+        id: "c_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+        ...(numeroOrden !== null ? { numeroOrden } : {}),
         nombre,
         telefono,
         deuda_anterior: 0,
