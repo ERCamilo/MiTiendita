@@ -57,6 +57,23 @@ MiTiendita/
 
 Se mantienen para seguimiento los Issues **[#1](https://github.com/ERCamilo/MiTiendita/issues/1), [#3](https://github.com/ERCamilo/MiTiendita/issues/3), [#4](https://github.com/ERCamilo/MiTiendita/issues/4) y [#5](https://github.com/ERCamilo/MiTiendita/issues/5)**. Su estado en GitHub al momento de la revisión era **Open**, aunque algunos módulos tienen código implementado; cerrar un Issue requiere validar sus criterios de aceptación.
 
+## Importación de clientes desde una lista JSON
+
+En **Clientes → Importar** (también disponible en **Ajustes → Importar solo clientes**) puedes seleccionar un archivo `.json` o pegar una lista como:
+
+```json
+[
+  {"number": "001", "name": "Cliente de ejemplo", "position": "Ayudante", "paused": true},
+  {"number": "005", "name": "Otro cliente", "sueldo": "900"}
+]
+```
+
+El importador lee **solo `number` y `name`**. Guarda `numeroOrden` como texto, conserva ceros iniciales y muestra el número en la tarjeta del cliente, ordenada numéricamente. Se ignoran puesto, sueldo, pausa y cualquier otro campo. Todos los clientes nuevos comienzan con deuda cero y sin pedidos ni pagos previos.
+
+Antes de confirmar, la aplicación muestra una vista previa y omite números de orden ya presentes, incluidos equivalentes como `001` y `1`. Los nombres iguales con números distintos **sí** pueden importarse. No reemplaza los registros, ventas, productos, pagos ni los respaldos existentes. El archivo se procesa localmente y no se envía a GitHub.
+
+**Pruebas:** `node --test tests/client-import.test.mjs`. La prueba usa únicamente nombres ficticios. Esta importación de lista no debe confundirse con **Restaurar JSON**, que sustituye el conjunto de datos de la app.
+
 ## Uso local
 Se recomienda servir el proyecto con un servidor HTTP estático (`python3 -m http.server 8000` y abrir `http://localhost:8000`). La instalación PWA requiere HTTPS o localhost y compatibilidad del navegador. Parte de los estilos y bibliotecas se cargan desde CDN, por lo que es necesario comprobar su disponibilidad tras la primera carga en modo avión.
 
