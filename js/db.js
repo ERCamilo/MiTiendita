@@ -248,6 +248,23 @@ async function migrarDesdeLocalStorage() {
     }
 }
 
+/**
+ * Añade solamente clientes nuevos, en una única transacción atómica de IndexedDB.
+ * No borra clientes, productos, ventas, pagos ni configuraciones existentes.
+ */
+export async function agregarClientesEnLote(clientes) {
+    if (!Array.isArray(clientes) || !clientes.length) return;
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction('clientes', 'readwrite');
+        const store = transaction.objectStore('clientes');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('Fallo al guardar clientes.'));
+        transaction.onabort = () => reject(transaction.error || new Error('Importación cancelada por IndexedDB.'));
+        for (const cliente of clientes) store.add(cliente);
+    });
+}
+
 // ─── Individual Record Operations (for future granular sync) ─────────
 
 export async function upsertRecord(storeName, record) {
