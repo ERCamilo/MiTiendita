@@ -57,6 +57,23 @@ MiTiendita/
 
 Se mantienen para seguimiento los Issues **[#1](https://github.com/ERCamilo/MiTiendita/issues/1), [#3](https://github.com/ERCamilo/MiTiendita/issues/3), [#4](https://github.com/ERCamilo/MiTiendita/issues/4) y [#5](https://github.com/ERCamilo/MiTiendita/issues/5)**. Su estado en GitHub al momento de la revisión era **Open**, aunque algunos módulos tienen código implementado; cerrar un Issue requiere validar sus criterios de aceptación.
 
+## Importación de clientes desde una lista JSON
+
+En **Clientes → Importar** (también disponible en **Ajustes → Importar solo clientes**) puedes seleccionar un archivo `.json` o pegar una lista como:
+
+```json
+[
+  {"number": "001", "name": "Cliente de ejemplo", "position": "Ayudante", "paused": true},
+  {"number": "005", "name": "Otro cliente", "sueldo": "900"}
+]
+```
+
+El importador lee **solo `number` y `name`**. Guarda `numeroOrden` como texto, conserva ceros iniciales y muestra el número en la tarjeta del cliente, ordenada numéricamente. Se ignoran puesto, sueldo, pausa y cualquier otro campo. Todos los clientes nuevos comienzan con deuda cero y sin pedidos ni pagos previos.
+
+Antes de confirmar, la aplicación muestra una vista previa y omite números de orden ya presentes, incluidos equivalentes como `001` y `1`. Los nombres iguales con números distintos **sí** pueden importarse. No reemplaza los registros, ventas, productos, pagos ni los respaldos existentes. El archivo se procesa localmente y no se envía a GitHub.
+
+**Pruebas:** `node --test tests/client-import.test.mjs`. La prueba usa únicamente nombres ficticios. Esta importación de lista no debe confundirse con **Restaurar JSON**, que sustituye el conjunto de datos de la app.
+
 ## Uso local
 Se recomienda servir el proyecto con un servidor HTTP estático (`python3 -m http.server 8000` y abrir `http://localhost:8000`). La instalación PWA requiere HTTPS o localhost y compatibilidad del navegador. Parte de los estilos y bibliotecas se cargan desde CDN, por lo que es necesario comprobar su disponibilidad tras la primera carga en modo avión.
 
@@ -69,3 +86,11 @@ Se recomienda servir el proyecto con un servidor HTTP estático (`python3 -m htt
 **Referencia metodológica:** Kanban/Scrumban, con las columnas Backlog, Por hacer, En progreso, En revisión y Finalizado, de acuerdo con el trabajo de la Semana II.
 
 > Nota de alcance: En la Semana II el título era "Sistema de Gestión y Control Comercial"; la Semana III concretó la propuesta como "Agenda Digital de Ventas y Cuentas por Cobrar". Para la entrega final se adopta el segundo enfoque, sin atribuir al código funciones no constatadas.
+
+## Mejoras de lógica HU01–HU05 (24 de octubre de 2026)
+
+Los cambios de persistencia atómica, pedidos con precios registrados, abonos durables, consultas de clientes, gastos por categoría y precaché PWA están desarrollados en la rama `feat/hu01-hu05-core-20261024` y cuentan con pruebas automatizadas (`npm ci && npm test`). No se han integrado a `main` y no equivalen a la aceptación funcional en Android. Consulta el [reporte técnico HU01–HU05](docs/HU01-HU05_CORE_AUDIT_2026-10-24.md) para resultados, riesgos, pendientes visuales e infraestructura de sincronización.
+
+### Pruebas de navegador para el PR #11
+
+Desde la raíz, inicia en una terminal `python3 -m http.server 8892 --bind 127.0.0.1` y en otra, después de `npm ci`, ejecuta `npm run test:e2e:flows`, `npm run test:e2e:android` y `npm run test:e2e:stress`. Requiere Chromium instalado (en a2: `/snap/bin/chromium`; ruta alternativa mediante `CHROME_BIN`). Usa una sesión aislada y datos ficticios. El resultado en modo emulado **no certifica la instalación real en Android físico**.

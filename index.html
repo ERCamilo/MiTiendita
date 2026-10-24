@@ -146,15 +146,21 @@
 
             <!-- SECCIÓN: CLIENTES CON CUENTA -->
             <div class="space-y-2.5 pt-1">
-                <div class="flex items-center justify-between px-1">
+                <div class="flex items-center justify-between gap-2 flex-wrap px-1">
                     <div>
                         <h3 class="font-bold text-base text-[#1D1D1F]">Clientes con cuenta</h3>
                         <p class="text-[11px] text-[#8A8580] font-medium" id="clientes-count">0 clientes registrados</p>
                     </div>
-                    <button id="btn-abrir-nuevo-cliente" class="flex items-center space-x-1 bg-[#D95338] hover:bg-[#C2410C] text-white text-xs font-bold px-3.5 py-2 rounded-full transition active:scale-95 shadow-xs cursor-pointer">
-                        <i data-lucide="plus" class="w-4 h-4"></i>
-                        <span>Nuevo cliente</span>
-                    </button>
+                    <div class="flex items-center gap-1.5 flex-wrap justify-end">
+                        <button type="button" id="btn-abrir-importar-clientes" title="Añadir clientes desde una lista JSON" class="flex items-center gap-1 bg-white border border-[#EAE5DE] text-m3-onSurface text-xs font-bold px-3 py-2 rounded-full cursor-pointer">
+                            <i data-lucide="upload" class="w-4 h-4"></i>
+                            <span>Importar</span>
+                        </button>
+                        <button id="btn-abrir-nuevo-cliente" class="flex items-center space-x-1 bg-[#D95338] hover:bg-[#C2410C] text-white text-xs font-bold px-3.5 py-2 rounded-full transition active:scale-95 shadow-xs cursor-pointer">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>Nuevo cliente</span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Listado de Clientes con Avatar y Saldo Destacado -->
@@ -349,11 +355,11 @@
                         </div>
                         <div>
                             <h3 class="font-bold text-sm text-m3-onSurface">Instalar en Celulares</h3>
-                            <p class="text-[11px] text-[#8A8580]">Funciona sin internet como app nativa</p>
+                            <p class="text-[11px] text-[#8A8580]">Puedes instalarla desde el navegador compatible</p>
                         </div>
                     </div>
                     <span id="tab-pwa-badge-status" class="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800">
-                        Offline Ready
+                        Comprobando instalación
                     </span>
                 </div>
 
@@ -366,7 +372,7 @@
                 <div class="bg-[#F8F5F0] rounded-2xl p-3.5 space-y-2 border border-[#EAE5DE]/80 text-xs">
                     <div class="flex items-start space-x-2">
                         <span class="font-bold text-[#D95338] shrink-0">Android:</span>
-                        <span class="text-[#5F5B57]">Toca el botón superior o presiona el menú de Chrome (⋮) y selecciona <strong>"Instalar aplicación"</strong>.</span>
+                        <span class="text-[#5F5B57]">Toca el botón superior. Si no aparece el instalador, se abrirá una guía para Chrome, Samsung Internet y otros navegadores.</span>
                     </div>
                     <div class="flex items-start space-x-2">
                         <span class="font-bold text-[#D95338] shrink-0">iPhone (iOS):</span>
@@ -468,6 +474,11 @@
                     <input type="file" id="tab-input-archivo-backup" accept=".json" class="hidden">
                 </div>
 
+                <button type="button" id="tab-btn-importar-clientes" class="w-full py-2.5 px-3 rounded-xl bg-orange-50 text-m3-onSurface hover:bg-orange-100 text-xs font-bold flex items-center justify-center space-x-2 border border-orange-200 transition cursor-pointer">
+                    <i data-lucide="users" class="w-4 h-4 text-m3-primary"></i>
+                    <span>Importar solo clientes (number / name)</span>
+                </button>
+                <p class="text-[11px] text-gray-600">Esta opción añade clientes sin restaurar ni borrar la contabilidad.</p>
                 <div class="pt-2 border-t border-[#EAE5DE] space-y-2">
                     <button type="button" id="tab-btn-cargar-demo" class="w-full py-2.5 px-3 rounded-xl bg-[#F8F5F0] text-m3-onSurface hover:bg-[#EAE5DE] text-xs font-semibold flex items-center justify-center space-x-2 border border-[#EAE5DE] transition cursor-pointer">
                         <i data-lucide="sparkles" class="w-4 h-4 text-amber-600"></i>

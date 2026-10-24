@@ -1,7 +1,9 @@
 import { 
     state, 
     cargarEstado,
-    guardarEnLocalStorage, 
+    guardarEnLocalStorage,
+    registrarGasto,
+    cerrarPeriodoConfirmado,
     calcularConsumoCliente, 
     calcularPagosCliente, 
     calcularMontoRestanteCliente, 
@@ -22,28 +24,30 @@ import {
 import { showToast } from './toast.js';
 
 import { initModalNuevoCliente, abrirModalNuevoCliente } from './modals/modalNuevoCliente.js';
+import { initModalImportarClientes, abrirModalImportarClientes } from './modals/modalImportarClientes.js';
+import { compararClientesPorNumero } from './clientImport.js';
 import { initModalNuevoPedido, abrirModalNuevoPedido } from './modals/modalNuevoPedido.js';
 import { initModalAbono, abrirModalAbono } from './modals/modalAbono.js';
 import { initModalTicket, abrirModalCompartirTicket } from './modals/modalTicket.js';
 import { initModalDetalleCliente, abrirDetalleCliente } from './modals/modalDetalleCliente.js';
 import { initModalConfirm, customConfirm } from './modals/modalConfirm.js';
 import { initModalAjustes, abrirModalAjustes, COLORES_TEMA, ejecutarExportarBackup, ejecutarImportarBackup } from './modals/modalAjustes.js';
-import { initPWA, instalarPWA, forzarActualizacion, esPWAInstalada, hayPromptInstalacionDisponible, onPWAStateChange } from './pwa.js';
+import { initPWA, instalarPWA, forzarActualizacion, obtenerEstadoInstalacionPWA, onPWAStateChange } from './pwa.js';
 
 let clienteExpandidoId = null;
 let currentTab = 'clientes';
 let productoRapidoSeleccionadoId = null;
 
 // 1. Inicialización de la Aplicación (async para IndexedDB)
+initPWA();
+
 document.addEventListener('DOMContentLoaded', async () => {
     await cargarEstado();
     aplicarTema(state.colorTema || 'coral');
     
-    // Inicializar Soporte PWA y Service Worker
-    initPWA();
-
     // Inicializar Componentes Modales
     initModalNuevoCliente(() => render());
+    initModalImportarClientes(() => render());
     initModalNuevoPedido(() => render());
     initModalAbono(() => render());
     initModalTicket();
@@ -88,6 +92,10 @@ function vincularEventosGlobales() {
     if (btnNuevoCliente) {
         btnNuevoCliente.addEventListener('click', abrirModalNuevoCliente);
     }
+
+    ['btn-abrir-importar-clientes', 'tab-btn-importar-clientes'].forEach(id => {
+        document.getElementById(id)?.addEventListener('click', abrirModalImportarClientes);
+    });
 
     // Barra de Navegación Inferior (4 Tabs: Clientes, Productos, Reportes, Ajustes)
     ['clientes', 'productos', 'reportes', 'ajustes'].forEach(tab => {
@@ -310,35 +318,21 @@ function guardarIdentidadTiendaDesdeTab() {
 }
 
 function actualizarEstadoPWAEnTab() {
-    const btnInstalar = document.getElementById('tab-btn-instalar-pwa');
-    const textoInstalar = document.getElementById('tab-btn-instalar-texto');
-    const badgeStatus = document.getElementById('tab-pwa-badge-status');
-    if (!btnInstalar || !textoInstalar) return;
-
-    if (esPWAInstalada()) {
-        btnInstalar.className = "w-full py-3 px-4 rounded-2xl bg-gray-100 border border-gray-200 text-gray-500 font-semibold text-sm flex items-center justify-center space-x-2 cursor-default";
-        btnInstalar.disabled = true;
-        textoInstalar.textContent = "✓ Aplicación ya instalada en este celular";
-        if (badgeStatus) {
-            badgeStatus.textContent = "Modo App Instalada";
-            badgeStatus.className = "text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800";
-        }
-    } else if (hayPromptInstalacionDisponible()) {
-        btnInstalar.className = "w-full py-3 px-4 rounded-2xl bg-m3-primary hover:bg-m3-primary/90 text-white font-bold text-sm flex items-center justify-center space-x-2 shadow-sm transition-all active:scale-95 cursor-pointer";
-        btnInstalar.disabled = false;
-        textoInstalar.textContent = "📲 Instalar en este Celular";
-        if (badgeStatus) {
-            badgeStatus.textContent = "Listo para instalar";
-            badgeStatus.className = "text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800";
-        }
-    } else {
-        btnInstalar.className = "w-full py-3 px-4 rounded-2xl bg-m3-primary hover:bg-m3-primary/90 text-white font-bold text-sm flex items-center justify-center space-x-2 shadow-sm transition-all active:scale-95 cursor-pointer";
-        btnInstalar.disabled = false;
-        textoInstalar.textContent = "📲 Instalar en este Celular";
-        if (badgeStatus) {
-            badgeStatus.textContent = "Offline Ready";
-            badgeStatus.className = "text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800";
-        }
+    const boton = document.getElementById('tab-btn-instalar-pwa');
+    const texto = document.getElementById('tab-btn-instalar-texto');
+    const badge = document.getElementById('tab-pwa-badge-status');
+    if (!boton || !texto) return;
+    const estado = obtenerEstadoInstalacionPWA();
+    boton.disabled = estado.tipo === 'instalada';
+    boton.classList.toggle('opacity-60', boton.disabled);
+    boton.classList.toggle('cursor-not-allowed', boton.disabled);
+    texto.textContent = estado.accion;
+    if (badge) {
+        badge.textContent = estado.etiqueta;
+        badge.className = 'text-[10px] font-extrabold px-2.5 py-1 rounded-full ' +
+            (estado.tipo === 'instalada' ? 'bg-blue-100 text-blue-800' :
+             estado.tipo === 'disponible' ? 'bg-emerald-100 text-emerald-800' :
+             'bg-amber-100 text-amber-800');
     }
 }
 
@@ -486,7 +480,7 @@ function renderMenuDelDia() {
 
         const btnPlus = card.querySelector('.btn-despacho-rapido');
         if (btnPlus) {
-            btnPlus.addEventListener('click', (e) => {
+            btnPlus.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 despacharProductoDirecto(prod.id);
             });
@@ -502,16 +496,21 @@ function renderMenuDelDia() {
     if (window.lucide) window.lucide.createIcons();
 }
 
-function despacharProductoDirecto(productoId) {
+async function despacharProductoDirecto(productoId) {
     const prod = state.productos.find(p => p.id === productoId);
     if (!prod) return;
 
     // Si hay un cliente expandido o seleccionado, cargar directamente
     if (clienteExpandidoId) {
         const cli = state.clientes.find(c => c.id === clienteExpandidoId);
-        agregarVentaRapida(clienteExpandidoId, productoId, 1);
-        render();
-        showToast(`⚡ +1 ${prod.nombre} agregado a ${cli ? cli.nombre : 'cliente'}`);
+        try {
+            await agregarVentaRapida(clienteExpandidoId, productoId, 1);
+            render();
+            showToast('+1 ' + prod.nombre + ' agregado a ' + (cli?.nombre || 'cliente'));
+        } catch (error) {
+            console.error(error);
+            showToast('No se pudo guardar el consumo.', true);
+        }
         return;
     }
 
@@ -525,6 +524,11 @@ function despacharProductoDirecto(productoId) {
         render();
         showToast(`⚡ ${prod.nombre} activo: toca un cliente abajo para despachar`);
     }
+}
+
+function escaparHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 }
 
 function obtenerIniciales(nombre) {
@@ -581,7 +585,7 @@ function renderClientes() {
 
     const prodRapido = productoRapidoSeleccionadoId ? state.productos.find(p => p.id === productoRapidoSeleccionadoId) : null;
 
-    state.clientes.forEach((c) => {
+    [...state.clientes].sort(compararClientesPorNumero).forEach((c) => {
         const consumoPeriodo = calcularConsumoCliente(c.id);
         const pagosPeriodo = calcularPagosCliente(c.id);
         const montoRestante = calcularMontoRestanteCliente(c.id);
@@ -636,7 +640,7 @@ function renderClientes() {
                         ${iniciales}
                     </div>
                     <div class="min-w-0">
-                        <h4 class="font-bold text-sm text-[#1D1D1F] truncate">${c.nombre}</h4>
+                        <h4 class="font-bold text-sm text-[#1D1D1F] truncate">${c.numeroOrden !== undefined && c.numeroOrden !== null && c.numeroOrden !== '' ? `<span class="text-m3-primary">#${escaparHtml(c.numeroOrden)}</span> · ` : ''}${escaparHtml(c.nombre)}</h4>
                         <p class="text-[11px] text-[#8A8580] font-medium truncate mt-0.5">
                             ${ultimoMov}
                         </p>
@@ -711,19 +715,29 @@ function renderClientes() {
             const btnPlus = card.querySelector('.btn-quick-plus');
             const btnMinus = card.querySelector('.btn-quick-minus');
             if (btnPlus) {
-                btnPlus.addEventListener('click', (e) => {
+                btnPlus.addEventListener('click', async (e) => {
                     e.stopPropagation();
-                    agregarVentaRapida(c.id, prodRapido.id, 1);
-                    render();
-                    showToast(`+1 ${prodRapido.nombre} ➔ ${c.nombre}`);
+                    try {
+                        await agregarVentaRapida(c.id, prodRapido.id, 1);
+                        render();
+                        showToast('+1 ' + prodRapido.nombre + ' agregado a ' + c.nombre);
+                    } catch (error) {
+                        console.error(error);
+                        showToast('No se pudo guardar el consumo.', true);
+                    }
                 });
             }
             if (btnMinus) {
-                btnMinus.addEventListener('click', (e) => {
+                btnMinus.addEventListener('click', async (e) => {
                     e.stopPropagation();
-                    if (reducirVentaRapida(c.id, prodRapido.id)) {
-                        render();
-                        showToast(`-1 ${prodRapido.nombre} ➔ ${c.nombre}`);
+                    try {
+                        if (await reducirVentaRapida(c.id, prodRapido.id)) {
+                            render();
+                            showToast('-1 ' + prodRapido.nombre + ' para ' + c.nombre);
+                        }
+                    } catch (error) {
+                        console.error(error);
+                        showToast('No se pudo actualizar el consumo.', true);
                     }
                 });
             }
@@ -1024,12 +1038,10 @@ function renderReportes() {
     let costoProduccion = 0;
 
     state.ventas.forEach(v => {
-        if (v.periodo === state.periodoActual) {
+        if (v.periodo === state.periodoActual && !v._deleted) {
             const p = state.productos.find(prod => prod.id === v.productoId);
-            if (p) {
-                ingresosVentas += p.precio * v.cantidad;
-                costoProduccion += p.costo * v.cantidad;
-            }
+            ingresosVentas += (v.precioUnitario ?? p?.precio ?? 0) * v.cantidad;
+            costoProduccion += (v.costoUnitario ?? p?.costo ?? 0) * v.cantidad;
         }
     });
 
@@ -1081,20 +1093,22 @@ function renderReportes() {
     }
 }
 
-function guardarGastoOperativo() {
-    const inputGasto = document.getElementById('gasto-op-input');
-    const monto = parseFloat(inputGasto.value);
-
-    if (isNaN(monto) || monto < 0) {
-        showToast("Ingresa un monto válido.", true);
+async function guardarGastoOperativo() {
+    const input = document.getElementById('gasto-op-input');
+    const monto = Number(input.value);
+    if (!Number.isFinite(monto) || monto <= 0) {
+        showToast('Ingresa un gasto positivo válido.', true);
         return;
     }
-
-    state.gastosOperativos += monto;
-    inputGasto.value = '';
-    guardarEnLocalStorage();
-    renderReportes();
-    showToast(`¡Gasto de $${monto.toFixed(2)} registrado en el período actual!`);
+    try {
+        await registrarGasto(monto, 'otros');
+        input.value = '';
+        renderReportes();
+        showToast('Gasto guardado correctamente.');
+    } catch (error) {
+        console.error(error);
+        showToast('No se pudo guardar el gasto.', true);
+    }
 }
 
 // 7. Cierre de Período Contable
@@ -1107,49 +1121,19 @@ function promptCerrarPeriodo() {
     );
 }
 
-function ejecutarCierrePeriodo() {
-    let ingresosVentasPeriodo = 0;
-    let costoProduccionPeriodo = 0;
-
-    state.ventas.forEach(v => {
-        if (v.periodo === state.periodoActual) {
-            const p = state.productos.find(prod => prod.id === v.productoId);
-            if (p) {
-                ingresosVentasPeriodo += p.precio * v.cantidad;
-                costoProduccionPeriodo += p.costo * v.cantidad;
-            }
-        }
-    });
-
-    const gananciaNeta = ingresosVentasPeriodo - (costoProduccionPeriodo + state.gastosOperativos);
-    const ahora = new Date();
-    const fechaCierreStr = ahora.toLocaleDateString('es-ES') + " " + ahora.toLocaleTimeString('es-ES', {hour: '2-digit', minute:'2-digit'});
-
-    if (!state.historicoCierres) state.historicoCierres = [];
-    state.historicoCierres.push({
-        id: state.periodoActual,
-        fecha: fechaCierreStr,
-        ingresos: ingresosVentasPeriodo.toFixed(2),
-        costoProd: costoProduccionPeriodo.toFixed(2),
-        gastoOp: state.gastosOperativos.toFixed(2),
-        gananciaNeta: gananciaNeta.toFixed(2)
-    });
-
-    // Traspaso de Deudas Inteligente
-    state.clientes.forEach(c => {
-        const consumoPeriodo = calcularConsumoCliente(c.id);
-        const pagosPeriodo = calcularPagosCliente(c.id);
-        const deudaRestante = Math.max(0, (c.deuda_anterior + consumoPeriodo) - pagosPeriodo);
-
-        c.deuda_anterior = deudaRestante;
-        c.pagado_en_periodo = false;
-    });
-
-    state.periodoActual++;
-    state.gastosOperativos = 0;
-    clienteExpandidoId = null;
-
-    guardarEnLocalStorage();
-    render();
-    showToast(`¡Período #${state.periodoActual - 1} cerrado! Se inició el Período #${state.periodoActual}`);
+let cierreEnProceso = false;
+async function ejecutarCierrePeriodo() {
+    if (cierreEnProceso) return;
+    cierreEnProceso = true;
+    try {
+        const cerrado = await cerrarPeriodoConfirmado();
+        clienteExpandidoId = null;
+        render();
+        showToast('Período #' + cerrado + ' cerrado y guardado.');
+    } catch (error) {
+        console.error(error);
+        showToast('No se pudo cerrar el período. No se guardaron cambios.', true);
+    } finally {
+        cierreEnProceso = false;
+    }
 }

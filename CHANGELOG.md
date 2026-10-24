@@ -13,3 +13,12 @@ Cinco hitos verificables mediante el historial de GitHub y la documentación té
 **Control de cambios:** Git conserva los commits; los Issues registran requisitos y pendientes; GitHub Projects permite reflejar el avance tras la comprobación de cada tarea. Este historial **no demuestra** por sí mismo que se hayan superado pruebas funcionales.
 
 **Base de código inspeccionada antes del cierre documental:** `e2676f7cbc580380cdb45b6f2176314cced69e8b`.
+
+## Trabajo pendiente de integración — 24-10-2026
+
+- Rama `feat/hu01-hu05-core-20261024`: seguridad atómica de IndexedDB, pagos y cierres confirmados, precios unitarios conservados en nuevos pedidos, gastos por categoría en la base de datos y utilidades de consulta. Mejora adicional de recursos PWA offline.
+- Suite automática: **17/17 PASS** con Node.js/fake-indexeddb/simulación de service worker. No se ejecutó validación Android o sincronización entre teléfonos.
+- Pendientes de UI: issues #6, #7, #8 y #9. Bloqueo de infraestructura: #10.
+- Reporte: `docs/HU01-HU05_CORE_AUDIT_2026-10-24.md`.
+
+- 24-10-2026: se añadieron scripts Playwright Core reproducibles de importación, compras, abonos, liquidación, respaldo/restauración, modo offline, Android emulado y estrés de 700 clientes. Se mantiene pendiente la validación en dispositivos Android reales antes de desplegar.

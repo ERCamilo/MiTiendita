@@ -1,5 +1,5 @@
 // js/modals/modalNuevoPedido.js - Modal para tomar pedidos con catálogo y preview de total
-import { state, guardarEnLocalStorage } from '../state.js';
+import { state, registrarPedidoConfirmado } from '../state.js';
 import { showToast } from '../toast.js';
 
 let selectedPedidoClienteId = null;
@@ -190,47 +190,31 @@ function actualizarUIPedidoModal() {
     if (window.lucide) window.lucide.createIcons();
 }
 
-function ejecutarConfirmarPedidoModal() {
-    if (!selectedPedidoClienteId) return;
-    const c = state.clientes.find(cli => cli.id === selectedPedidoClienteId);
-    if (!c) return;
-
-    const itemsAAgregar = [];
-    state.productos.forEach(p => {
-        const cant = carroCompraPedido[p.id] || 0;
-        if (cant > 0) {
-            itemsAAgregar.push({ prod: p, cantidad: cant });
-        }
-    });
-
-    if (itemsAAgregar.length === 0) {
-        showToast("No has seleccionado ningún artículo.", true);
+let pedidoEnProceso = false;
+async function ejecutarConfirmarPedidoModal() {
+    if (!selectedPedidoClienteId || pedidoEnProceso) return;
+    const cliente = state.clientes.find(c => c.id === selectedPedidoClienteId);
+    if (!cliente) return;
+    const items = state.productos
+        .filter(p => (carroCompraPedido[p.id] || 0) > 0)
+        .map(p => ({ productoId: p.id, cantidad: carroCompraPedido[p.id] }));
+    if (!items.length) {
+        showToast('No has seleccionado ningún artículo.', true);
         return;
     }
-
-    const ahora = new Date();
-    const fechaStr = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) + ", " + ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-    let montoTotalPedido = 0;
-    itemsAAgregar.forEach(item => {
-        montoTotalPedido += item.prod.precio * item.cantidad;
-        state.ventas.push({
-            id: 'v_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-            clienteId: c.id,
-            productoId: item.prod.id,
-            cantidad: item.cantidad,
-            periodo: state.periodoActual,
-            fecha: fechaStr,
-            fechaIso: ahora.toISOString()
-        });
-    });
-
-    if (c.pagado_en_periodo) {
-        c.pagado_en_periodo = false;
+    pedidoEnProceso = true;
+    const boton = document.getElementById('btn-confirmar-pedido-modal');
+    boton.disabled = true;
+    try {
+        const total = await registrarPedidoConfirmado(cliente.id, items);
+        cerrarModalNuevoPedido();
+        onPedidoConfirmadoCallback?.(cliente);
+        showToast('Pedido por $' + total.toFixed(2) + ' guardado correctamente.');
+    } catch (error) {
+        console.error('Error guardando pedido:', error);
+        showToast('El pedido no se guardó. Inténtalo otra vez.', true);
+    } finally {
+        pedidoEnProceso = false;
+        boton.disabled = false;
     }
-
-    guardarEnLocalStorage();
-    cerrarModalNuevoPedido();
-    if (onPedidoConfirmadoCallback) onPedidoConfirmadoCallback(c);
-    showToast(`¡Pedido de $${montoTotalPedido.toFixed(2)} agregado a la cuenta de ${c.nombre}!`);
 }

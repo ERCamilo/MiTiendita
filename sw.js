@@ -1,17 +1,20 @@
 // sw.js - Service Worker para Mi Tiendita (PWA con soporte Offline completo y Actualizaciones)
-const CACHE_VERSION = 'mitiendita-v1.1';
+const CACHE_VERSION = 'mitiendita-v1.4';
 const CACHE_NAME = `mitiendita-cache-${CACHE_VERSION}`;
 
 // Recursos estáticos críticos del núcleo
 const STATIC_ASSETS = [
     './',
     './index.html',
+    './js/app.js?v=4.0',
     './manifest.json',
     './js/app.js',
     './js/db.js',
     './js/state.js',
     './js/toast.js',
     './js/pwa.js',
+    './js/clientImport.js',
+    './js/modals/modalImportarClientes.js',
     './js/modals/modalAbono.js',
     './js/modals/modalAjustes.js',
     './js/modals/modalConfirm.js',
@@ -24,12 +27,36 @@ const STATIC_ASSETS = [
     './icons/icon-512.png'
 ];
 
-// Instalación: Precarga de recursos locales
+// Dependencias usadas por la interfaz: precarga best-effort con red.
+// Fallar al descargarlas no debe bloquear el funcionamiento local de la PWA.
+const OPTIONAL_EXTERNAL_ASSETS = [
+    'https://cdn.tailwindcss.com',
+    'https://unpkg.com/lucide@latest',
+    'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+    'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap'
+];
+
+async function precacheOptional(cache) {
+    await Promise.allSettled(OPTIONAL_EXTERNAL_ASSETS.map(async url => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3500);
+        try {
+            const response = await fetch(url, { mode: 'no-cors', signal: controller.signal });
+            if (response.ok || response.type === 'opaque') {
+                await cache.put(url, response);
+            }
+        } finally {
+            clearTimeout(timer);
+        }
+    }));
+}
+
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then(cache => {
-                return cache.addAll(STATIC_ASSETS);
+            .then(async cache => {
+                await cache.addAll(STATIC_ASSETS);
+                await precacheOptional(cache);
             })
             .then(() => self.skipWaiting())
     );
@@ -42,7 +69,7 @@ self.addEventListener('activate', event => {
             .then(keys => {
                 return Promise.all(
                     keys.map(key => {
-                        if (key !== CACHE_NAME) {
+                        if (key.startsWith('mitiendita-cache-') && key !== CACHE_NAME) {
                             return caches.delete(key);
                         }
                     })
@@ -118,7 +145,7 @@ self.addEventListener('message', event => {
 
     if (event.data.action === 'clearCache') {
         caches.keys().then(keys => {
-            return Promise.all(keys.map(k => caches.delete(k)));
+            return Promise.all(keys.filter(k => k.startsWith('mitiendita-cache-')).map(k => caches.delete(k)));
         }).then(() => {
             if (event.ports && event.ports[0]) {
                 event.ports[0].postMessage({ success: true });

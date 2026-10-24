@@ -2,7 +2,7 @@
 import { state, guardarEnLocalStorage, resetearTodosLosDatos, cargarDatosDemostracion, aplicarTema, exportarTodo, importarTodo, cargarEstado } from '../state.js';
 import { showToast } from '../toast.js';
 import { customConfirm } from './modalConfirm.js';
-import { instalarPWA, forzarActualizacion, esPWAInstalada, hayPromptInstalacionDisponible, onPWAStateChange } from '../pwa.js';
+import { instalarPWA, forzarActualizacion, obtenerEstadoInstalacionPWA, onPWAStateChange } from '../pwa.js';
 
 let onAjustesActualizadosCallback = null;
 
@@ -89,7 +89,7 @@ export function initModalAjustes(onAjustesActualizados) {
                         <span>Aplicación & PWA</span>
                     </h4>
                     <span id="pwa-badge-status" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                        Offline Ready
+                        Comprobando instalación
                     </span>
                 </div>
                 <p class="text-[10px] text-m3-outline">Instala Mi Tiendita en tu pantalla de inicio y gestiona actualizaciones con caché limpio.</p>
@@ -244,35 +244,21 @@ export function abrirModalAjustes() {
 }
 
 function actualizarEstadoPWAEnModal() {
-    const btnInstalar = document.getElementById('btn-instalar-pwa');
-    const textoInstalar = document.getElementById('btn-instalar-texto');
-    const badgeStatus = document.getElementById('pwa-badge-status');
-    if (!btnInstalar || !textoInstalar) return;
-
-    if (esPWAInstalada()) {
-        btnInstalar.className = "w-full py-2.5 px-3 rounded-xl bg-gray-100 border border-gray-200 text-gray-500 text-xs font-semibold flex items-center justify-center space-x-2 cursor-default";
-        btnInstalar.disabled = true;
-        textoInstalar.textContent = "✓ Aplicación ya instalada";
-        if (badgeStatus) {
-            badgeStatus.textContent = "Modo App Instalada";
-            badgeStatus.className = "text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800";
-        }
-    } else if (hayPromptInstalacionDisponible()) {
-        btnInstalar.className = "w-full py-2.5 px-3 rounded-xl bg-m3-primary hover:bg-m3-primary/90 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-xs transition active:scale-95 cursor-pointer";
-        btnInstalar.disabled = false;
-        textoInstalar.textContent = "Instalar en Dispositivo";
-        if (badgeStatus) {
-            badgeStatus.textContent = "Listo para instalar";
-            badgeStatus.className = "text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800";
-        }
-    } else {
-        btnInstalar.className = "w-full py-2.5 px-3 rounded-xl bg-m3-primary hover:bg-m3-primary/90 text-white text-xs font-bold flex items-center justify-center space-x-2 shadow-xs transition active:scale-95 cursor-pointer";
-        btnInstalar.disabled = false;
-        textoInstalar.textContent = "Instalar Aplicación";
-        if (badgeStatus) {
-            badgeStatus.textContent = "Offline Ready";
-            badgeStatus.className = "text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800";
-        }
+    const boton = document.getElementById('btn-instalar-pwa');
+    const texto = document.getElementById('btn-instalar-texto');
+    const badge = document.getElementById('pwa-badge-status');
+    if (!boton || !texto) return;
+    const estado = obtenerEstadoInstalacionPWA();
+    boton.disabled = estado.tipo === 'instalada';
+    boton.classList.toggle('opacity-60', boton.disabled);
+    boton.classList.toggle('cursor-not-allowed', boton.disabled);
+    texto.textContent = estado.accion;
+    if (badge) {
+        badge.textContent = estado.etiqueta;
+        badge.className = 'text-[9px] font-extrabold px-2 py-0.5 rounded-full ' +
+            (estado.tipo === 'instalada' ? 'bg-blue-100 text-blue-800' :
+             estado.tipo === 'disponible' ? 'bg-emerald-100 text-emerald-800' :
+             'bg-amber-100 text-amber-800');
     }
 }
 
