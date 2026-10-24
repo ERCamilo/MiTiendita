@@ -22,6 +22,8 @@ import {
 import { showToast } from './toast.js';
 
 import { initModalNuevoCliente, abrirModalNuevoCliente } from './modals/modalNuevoCliente.js';
+import { initModalImportarClientes, abrirModalImportarClientes } from './modals/modalImportarClientes.js';
+import { compararClientesPorNumero } from './clientImport.js';
 import { initModalNuevoPedido, abrirModalNuevoPedido } from './modals/modalNuevoPedido.js';
 import { initModalAbono, abrirModalAbono } from './modals/modalAbono.js';
 import { initModalTicket, abrirModalCompartirTicket } from './modals/modalTicket.js';
@@ -43,6 +45,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Inicializar Componentes Modales
     initModalNuevoCliente(() => render());
+    initModalImportarClientes(() => render());
     initModalNuevoPedido(() => render());
     initModalAbono(() => render());
     initModalTicket();
@@ -87,6 +90,10 @@ function vincularEventosGlobales() {
     if (btnNuevoCliente) {
         btnNuevoCliente.addEventListener('click', abrirModalNuevoCliente);
     }
+
+    ['btn-abrir-importar-clientes', 'tab-btn-importar-clientes'].forEach(id => {
+        document.getElementById(id)?.addEventListener('click', abrirModalImportarClientes);
+    });
 
     // Barra de Navegación Inferior (4 Tabs: Clientes, Productos, Reportes, Ajustes)
     ['clientes', 'productos', 'reportes', 'ajustes'].forEach(tab => {
@@ -512,6 +519,11 @@ function despacharProductoDirecto(productoId) {
     }
 }
 
+function escaparHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+}
+
 function obtenerIniciales(nombre) {
     if (!nombre) return "CL";
     const parts = nombre.trim().split(/\s+/);
@@ -566,7 +578,7 @@ function renderClientes() {
 
     const prodRapido = productoRapidoSeleccionadoId ? state.productos.find(p => p.id === productoRapidoSeleccionadoId) : null;
 
-    state.clientes.forEach((c) => {
+    [...state.clientes].sort(compararClientesPorNumero).forEach((c) => {
         const consumoPeriodo = calcularConsumoCliente(c.id);
         const pagosPeriodo = calcularPagosCliente(c.id);
         const montoRestante = calcularMontoRestanteCliente(c.id);
@@ -621,7 +633,7 @@ function renderClientes() {
                         ${iniciales}
                     </div>
                     <div class="min-w-0">
-                        <h4 class="font-bold text-sm text-[#1D1D1F] truncate">${c.nombre}</h4>
+                        <h4 class="font-bold text-sm text-[#1D1D1F] truncate">${c.numeroOrden !== undefined && c.numeroOrden !== null && c.numeroOrden !== '' ? `<span class="text-m3-primary">#${escaparHtml(c.numeroOrden)}</span> · ` : ''}${escaparHtml(c.nombre)}</h4>
                         <p class="text-[11px] text-[#8A8580] font-medium truncate mt-0.5">
                             ${ultimoMov}
                         </p>
