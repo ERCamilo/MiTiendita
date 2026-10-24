@@ -90,3 +90,7 @@ Se recomienda servir el proyecto con un servidor HTTP estático (`python3 -m htt
 ## Mejoras de lógica HU01–HU05 (24 de octubre de 2026)
 
 Los cambios de persistencia atómica, pedidos con precios registrados, abonos durables, consultas de clientes, gastos por categoría y precaché PWA están desarrollados en la rama `feat/hu01-hu05-core-20261024` y cuentan con pruebas automatizadas (`npm ci && npm test`). No se han integrado a `main` y no equivalen a la aceptación funcional en Android. Consulta el [reporte técnico HU01–HU05](docs/HU01-HU05_CORE_AUDIT_2026-10-24.md) para resultados, riesgos, pendientes visuales e infraestructura de sincronización.
+
+### Pruebas de navegador para el PR #11
+
+Desde la raíz, inicia en una terminal `python3 -m http.server 8892 --bind 127.0.0.1` y en otra, después de `npm ci`, ejecuta `npm run test:e2e:flows`, `npm run test:e2e:android` y `npm run test:e2e:stress`. Requiere Chromium instalado (en a2: `/snap/bin/chromium`; ruta alternativa mediante `CHROME_BIN`). Usa una sesión aislada y datos ficticios. El resultado en modo emulado **no certifica la instalación real en Android físico**.

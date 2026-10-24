@@ -20,3 +20,5 @@ Cinco hitos verificables mediante el historial de GitHub y la documentación té
 - Suite automática: **17/17 PASS** con Node.js/fake-indexeddb/simulación de service worker. No se ejecutó validación Android o sincronización entre teléfonos.
 - Pendientes de UI: issues #6, #7, #8 y #9. Bloqueo de infraestructura: #10.
 - Reporte: `docs/HU01-HU05_CORE_AUDIT_2026-10-24.md`.
+
+- 24-10-2026: se añadieron scripts Playwright Core reproducibles de importación, compras, abonos, liquidación, respaldo/restauración, modo offline, Android emulado y estrés de 700 clientes. Se mantiene pendiente la validación en dispositivos Android reales antes de desplegar.

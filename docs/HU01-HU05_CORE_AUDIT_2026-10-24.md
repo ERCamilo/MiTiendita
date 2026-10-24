@@ -68,6 +68,20 @@ Comando reproducible: `npm ci && npm test` (Node.js 22 utilizado).
 
 **No ejecutado:** Playwright sobre Android real, instalación PWA en varios modelos, arranque offline completo con dependencias CDN no precargadas, medición <0,5 s de búsqueda en el dispositivo, tres toques comprobados, sincronización de dos teléfonos, pruebas de almacenamiento casi lleno.
 
+## Ronda de pruebas de navegador del PR #11 — 24/10/2026
+
+Entorno: Chromium 155 ejecutado en a2 contra servidor **local** sobre 127.0.0.1; no se ingresaron datos reales ni se accedió a producción. Playwright Core, ventana móvil de 393 × 852 y perfil emulado Pixel 7 (Android 14). GitHub Actions y las 17 pruebas automatizadas también aprobaron.
+
+**Flujos E2E: 6/6 PASS** — importación JSON con duplicados y códigos `001`, creación de producto y pedido, abono parcial más liquidación total con registro de pago, exportación/restauración JSON, persistencia tras recarga y nueva apertura real con conexión de navegador desactivada. No hubo excepciones de JavaScript en esos recorridos.
+
+**Pruebas Android emulado:** guía manual de instalación, manifiesto e iconos accesibles, control de service worker y apertura en modo offline: **PASS**. No equivale a instalación física desde Chrome o Samsung Internet en un teléfono real; tampoco verifica el prompt nativo del sistema operativo.
+
+**Estrés con 700 clientes ficticios:** guardado ~47–56 ms, consulta ~3,2–3,4 ms, orden ~0,4 ms y recarga/rendereado móvil ~541–563 ms en esta máquina. No extrapolar estos tiempos a dispositivos Android modestos. La búsqueda aún no tiene control UI; la consulta probada es la función de datos.
+
+**Reproducción:** `npm ci && npm test`, luego levantar `python3 -m http.server 8892 --bind 127.0.0.1` desde la raíz del repositorio y ejecutar, desde otra terminal, `npm run test:e2e:flows`, `npm run test:e2e:android` y `npm run test:e2e:stress`. Los escenarios usan datos inventados y contextos aislados. Chrome configurable mediante `CHROME_BIN` y servidor mediante `E2E_BASE_URL`.
+
+**Puerta de salida pendiente antes de desplegar:** prueba manual en Android físico (instalación Chrome y Samsung Internet según disponibilidad, desconexión, actualización, restauración, cierre/abono y conservación de datos de prueba). A2 no tiene ADB conectado. El fallo de la instalación en algunos celulares descrito por el usuario no puede considerarse resuelto hasta esta verificación.
+
 ## Pendientes abiertos y decisiones para diseño
 
 - [#6 — HU01, flujo móvil máximo tres toques](https://github.com/ERCamilo/MiTiendita/issues/6): UX.
