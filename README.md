@@ -86,3 +86,7 @@ Se recomienda servir el proyecto con un servidor HTTP estático (`python3 -m htt
 **Referencia metodológica:** Kanban/Scrumban, con las columnas Backlog, Por hacer, En progreso, En revisión y Finalizado, de acuerdo con el trabajo de la Semana II.
 
 > Nota de alcance: En la Semana II el título era "Sistema de Gestión y Control Comercial"; la Semana III concretó la propuesta como "Agenda Digital de Ventas y Cuentas por Cobrar". Para la entrega final se adopta el segundo enfoque, sin atribuir al código funciones no constatadas.
+
+## Mejoras de lógica HU01–HU05 (24 de octubre de 2026)
+
+Los cambios de persistencia atómica, pedidos con precios registrados, abonos durables, consultas de clientes, gastos por categoría y precaché PWA están desarrollados en la rama `feat/hu01-hu05-core-20261024` y cuentan con pruebas automatizadas (`npm ci && npm test`). No se han integrado a `main` y no equivalen a la aceptación funcional en Android. Consulta el [reporte técnico HU01–HU05](docs/HU01-HU05_CORE_AUDIT_2026-10-24.md) para resultados, riesgos, pendientes visuales e infraestructura de sincronización.
