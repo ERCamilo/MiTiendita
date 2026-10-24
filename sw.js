@@ -1,5 +1,5 @@
 // sw.js - Service Worker para Mi Tiendita (PWA con soporte Offline completo y Actualizaciones)
-const CACHE_VERSION = 'mitiendita-v1.2';
+const CACHE_VERSION = 'mitiendita-v1.3';
 const CACHE_NAME = `mitiendita-cache-${CACHE_VERSION}`;
 
 // Recursos estáticos críticos del núcleo
@@ -13,6 +13,8 @@ const STATIC_ASSETS = [
     './js/state.js',
     './js/toast.js',
     './js/pwa.js',
+    './js/clientImport.js',
+    './js/modals/modalImportarClientes.js',
     './js/modals/modalAbono.js',
     './js/modals/modalAjustes.js',
     './js/modals/modalConfirm.js',
