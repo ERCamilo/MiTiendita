@@ -121,6 +121,9 @@ async function confirmar() {
         get('clientes-import-error').textContent = 'No se pudo guardar la lista. No se modificaron los clientes existentes.';
     } finally {
         ocupado = false;
+        if (datos && get('clientes-import-confirm')) {
+            get('clientes-import-confirm').disabled = false;
+        }
     }
 }
 
