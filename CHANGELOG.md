@@ -22,3 +22,10 @@ Cinco hitos verificables mediante el historial de GitHub y la documentación té
 - Reporte: `docs/HU01-HU05_CORE_AUDIT_2026-10-24.md`.
 
 - 24-10-2026: se añadieron scripts Playwright Core reproducibles de importación, compras, abonos, liquidación, respaldo/restauración, modo offline, Android emulado y estrés de 700 clientes. Se mantiene pendiente la validación en dispositivos Android reales antes de desplegar.
+
+## 25-10-2026 — Captura temprana del aviso de instalación (rama de revisión)
+
+- Captura de `beforeinstallprompt` antes de bibliotecas externas; estado del botón coherente si el aviso llega antes de `app.js`.
+- El botón abre el instalador nativo solo cuando Chrome entrega el permiso, o muestra instrucciones cuando no está disponible; no puede forzar Android.
+- Ajuste de actualización del service worker y versión de caché; pruebas unitarias y de navegador de compatibilidad.
+- Comparación con Mini en `docs/PWA_MINI_COMPARACION_2026-10-25.md`.
