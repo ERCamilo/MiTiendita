@@ -25,14 +25,27 @@ export function initPWA() {
     if (initialized) return;
     initialized = true;
 
+    // index.html registra el aviso antes de los scripts externos: el evento
+    // puede haberse emitido antes de que se ejecute este módulo.
+    const earlyGate = window.__mitienditaInstallGate;
+    if (earlyGate?.pending) {
+        deferredInstallPrompt = earlyGate.pending;
+    }
+    if (earlyGate?.installed) deferredInstallPrompt = null;
+
     window.addEventListener('beforeinstallprompt', event => {
         event.preventDefault();
         deferredInstallPrompt = event;
+        if (earlyGate) earlyGate.pending = event;
         notifyPWAChange();
     });
 
     window.addEventListener('appinstalled', () => {
         deferredInstallPrompt = null;
+        if (earlyGate) {
+            earlyGate.pending = null;
+            earlyGate.installed = true;
+        }
         showToast('Mi Tiendita se ha instalado correctamente.');
         notifyPWAChange();
     });
@@ -55,7 +68,7 @@ export function initPWA() {
 
     const registerWorker = async () => {
         try {
-            swRegistration = await navigator.serviceWorker.register('./sw.js');
+            swRegistration = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' });
             swRegistration.addEventListener('updatefound', () => {
                 const worker = swRegistration.installing;
                 if (!worker) return;
@@ -87,7 +100,8 @@ export function onPWAStateChange(callback) {
 }
 
 export function esPWAInstalada() {
-    return window.matchMedia('(display-mode: standalone)').matches ||
+    return window.__mitienditaInstallGate?.installed === true ||
+        window.matchMedia('(display-mode: standalone)').matches ||
         window.matchMedia('(display-mode: fullscreen)').matches ||
         navigator.standalone === true ||
         document.referrer.startsWith('android-app://');
@@ -108,7 +122,7 @@ export function obtenerEstadoInstalacionPWA() {
     if (!window.isSecureContext) {
         return { tipo: 'inseguro', etiqueta: 'Requiere HTTPS', accion: 'Ver instrucciones' };
     }
-    return { tipo: 'manual', etiqueta: 'Instalación desde el navegador', accion: 'Cómo instalar' };
+    return { tipo: 'manual', etiqueta: 'Instalación desde el navegador', accion: 'Instalar o ver opciones' };
 }
 
 function installationInstructions() {
@@ -143,7 +157,7 @@ function installationInstructions() {
     }
     if (android) {
         return {
-            context: 'Instalación en Chrome u otro navegador de Android.',
+            context: 'Este navegador aún no ha habilitado el instalador automático. Prueba el menú de Chrome o vuelve a abrir el sitio directamente en Chrome.',
             steps: ['Abre el menú del navegador (normalmente ⋮).', 'Elige Instalar aplicación o Añadir a pantalla de inicio.', 'Confirma. Si esa opción no aparece, abre este enlace directamente en Chrome o Samsung Internet.']
         };
     }
@@ -255,6 +269,7 @@ export async function instalarPWA() {
     // prompt() debe ejecutarse directamente en el gesto del usuario.
     const pendingPrompt = deferredInstallPrompt;
     deferredInstallPrompt = null;
+    if (window.__mitienditaInstallGate) window.__mitienditaInstallGate.pending = null;
     notifyPWAChange();
     try {
         await pendingPrompt.prompt();

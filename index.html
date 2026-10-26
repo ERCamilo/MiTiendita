@@ -7,6 +7,18 @@
     
     <!-- PWA Manifest & Meta Tags -->
     <link rel="manifest" href="manifest.json">
+    <!-- Capture el aviso nativo incluso si las bibliotecas externas retrasan app.js. -->
+    <script>
+        window.__mitienditaInstallGate = { pending: null, installed: false };
+        window.addEventListener('beforeinstallprompt', event => {
+            event.preventDefault();
+            window.__mitienditaInstallGate.pending = event;
+        });
+        window.addEventListener('appinstalled', () => {
+            window.__mitienditaInstallGate.pending = null;
+            window.__mitienditaInstallGate.installed = true;
+        });
+    </script>
     <meta name="theme-color" content="#D95338">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -523,6 +535,6 @@
     </nav>
 
     <!-- Punto de Entrada Modular (ES Module) -->
-    <script type="module" src="js/app.js?v=4.0"></script>
+    <script type="module" src="js/app.js?v=4.1"></script>
 </body>
 </html>
