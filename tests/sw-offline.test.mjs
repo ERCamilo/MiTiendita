@@ -36,7 +36,7 @@ test('HU05: los recursos locales siguen disponibles tras quedar offline', async 
     listeners.get('install')({ waitUntil(promise) { installed = promise; } });
     await installed;
     assert(store.has('https://tienda.erlin.do/index.html'));
-    assert(store.has('https://tienda.erlin.do/js/app.js?v=4.0'));
+    assert(store.has('https://tienda.erlin.do/js/app.js?v=4.1'));
     assert(store.has('https://tienda.erlin.do/js/clientImport.js'));
     let result;
     listeners.get('fetch')({
